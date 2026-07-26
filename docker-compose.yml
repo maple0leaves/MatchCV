@@ -1,0 +1,193 @@
+services:
+  db:
+    image: mysql:8.0.39
+    environment:
+      MYSQL_DATABASE: hellojobs
+      MYSQL_ROOT_PASSWORD: ${MYSQL_PASSWORD:-hellojobs123}
+    volumes:
+      - mysqldata:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -uroot -p$${MYSQL_ROOT_PASSWORD} --silent"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:7.4.1-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  pgvector:
+    image: pgvector/pgvector:0.8.0-pg16
+    environment:
+      POSTGRES_USER: ${PGVECTOR_USER:-matchcv}
+      POSTGRES_PASSWORD: ${PGVECTOR_PASSWORD:-matchcv}
+      POSTGRES_DB: ${PGVECTOR_DB:-resume_vectors}
+    volumes:
+      - pgvectordata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${PGVECTOR_USER:-matchcv} -d ${PGVECTOR_DB:-resume_vectors}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  namesrv:
+    image: apache/rocketmq:5.3.2
+    command: sh mqnamesrv
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/127.0.0.1/9876'"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
+
+  broker-init:
+    image: busybox:1.36.1
+    volumes:
+      - rocketmqstore:/home/rocketmq/store
+    command: chown -R 3000:3000 /home/rocketmq/store
+
+  broker:
+    image: apache/rocketmq:5.3.2
+    depends_on:
+      namesrv:
+        condition: service_healthy
+      broker-init:
+        condition: service_completed_successfully
+    environment:
+      NAMESRV_ADDR: namesrv:9876
+    volumes:
+      - ./deploy/rocketmq/broker.conf:/home/rocketmq/rocketmq-5.3.2/conf/broker.conf:ro
+      - rocketmqstore:/home/rocketmq/store
+    command: sh mqbroker -c /home/rocketmq/rocketmq-5.3.2/conf/broker.conf
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/127.0.0.1/10911'"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+
+  ai-service:
+    build: ./ai-service
+    depends_on:
+      pgvector:
+        condition: service_healthy
+    volumes:
+      - resumes:/app/data/resumes
+      - vectorstore:/app/data/vector_store
+      - checkpoints:/app/data/checkpoints
+    environment:
+      APP_ENV: ${APP_ENV:-development}
+      API_HOST: 0.0.0.0
+      API_PORT: 8008
+      CHECKPOINT_DB_PATH: /app/data/checkpoints/checkpoints.db
+      AGENT_RECURSION_LIMIT: ${AGENT_RECURSION_LIMIT:-12}
+      SESSION_TTL_DAYS: ${SESSION_TTL_DAYS:-7}
+      HYBRID_SEMANTIC_WEIGHT: ${HYBRID_SEMANTIC_WEIGHT:-0.7}
+      HYBRID_KEYWORD_WEIGHT: ${HYBRID_KEYWORD_WEIGHT:-0.3}
+      JWT_SECRET: ${JWT_SECRET:-change-me-in-production-use-random-32-bytes}
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev-internal-token-change-in-production}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
+      LLM_MODEL: ${LLM_MODEL:-gpt-4o-mini}
+      LLM_TIMEOUT: ${LLM_TIMEOUT:-30}
+      LLM_STRUCTURED_METHOD: ${LLM_STRUCTURED_METHOD:-function_calling}
+      LLM_DISABLE_THINKING: ${LLM_DISABLE_THINKING:-false}
+      LLM_FORCE_FALLBACK: ${LLM_FORCE_FALLBACK:-false}
+      LLM_FALLBACK_API_KEY: ${LLM_FALLBACK_API_KEY:-}
+      LLM_FALLBACK_BASE_URL: ${LLM_FALLBACK_BASE_URL:-}
+      LLM_FALLBACK_MODEL: ${LLM_FALLBACK_MODEL:-}
+      LLM_FALLBACK_STRUCTURED_METHOD: ${LLM_FALLBACK_STRUCTURED_METHOD:-json_mode}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-text-embedding-3-small}
+      EMBEDDING_BACKEND: ${EMBEDDING_BACKEND:-openai}
+      EMBEDDING_API_KEY: ${EMBEDDING_API_KEY:-}
+      EMBEDDING_BASE_URL: ${EMBEDDING_BASE_URL:-}
+      OCR_ENABLED: ${OCR_ENABLED:-true}
+      OCR_MODEL: ${OCR_MODEL:-deepseek-ai/DeepSeek-OCR}
+      OCR_API_KEY: ${OCR_API_KEY:-}
+      OCR_BASE_URL: ${OCR_BASE_URL:-}
+      OCR_FALLBACK_MODELS: ${OCR_FALLBACK_MODELS:-Qwen/Qwen3-VL-8B-Instruct,PaddlePaddle/PaddleOCR-VL-1.5}
+      RERANK_ENABLED: ${RERANK_ENABLED:-false}
+      RESUME_DIR: /app/data/resumes
+      VECTOR_STORE_PATH: /app/data/vector_store
+      PGVECTOR_HOST: pgvector
+      PGVECTOR_PORT: 5432
+      PGVECTOR_DB: ${PGVECTOR_DB:-resume_vectors}
+      PGVECTOR_USER: ${PGVECTOR_USER:-matchcv}
+      PGVECTOR_PASSWORD: ${PGVECTOR_PASSWORD:-matchcv}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173,http://localhost:8080}
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8008/api/health', timeout=3)\""]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
+
+  java-backend:
+    build:
+      context: ./java-backend
+      dockerfile: Dockerfile
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      broker:
+        condition: service_healthy
+      ai-service:
+        condition: service_healthy
+    volumes:
+      - resumes:/app/data/resumes
+    environment:
+      APP_ENV: ${APP_ENV:-development}
+      MYSQL_HOST: db
+      MYSQL_PORT: 3306
+      MYSQL_DB: hellojobs
+      MYSQL_USER: root
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-hellojobs123}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      AI_SERVICE_URL: http://ai-service:8008
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev-internal-token-change-in-production}
+      RESUME_DIR: /app/data/resumes
+      JWT_SECRET: ${JWT_SECRET:-change-me-in-production-use-random-32-bytes}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173,http://localhost:8080}
+      APP_ROCKETMQ_ENABLED: ${APP_ROCKETMQ_ENABLED:-true}
+      ROCKETMQ_NAME_SERVER: namesrv:9876
+      ROCKETMQ_PRODUCER_GROUP: agent-recruit-producer
+      ROCKETMQ_RESUME_PARSE_TOPIC: agent-recruit-resume-parse
+      ROCKETMQ_RESUME_PARSE_CONSUMER_GROUP: agent-recruit-resume-parse-consumer
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin123}
+    healthcheck:
+      test: ["CMD-SHELL", "curl --fail --silent http://localhost:8080/api/health >/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+
+  frontend:
+    build: ./frontend
+    depends_on:
+      java-backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1/"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  mysqldata:
+  redisdata:
+  rocketmqstore:
+  resumes:
+  vectorstore:
+  pgvectordata:
+  checkpoints:

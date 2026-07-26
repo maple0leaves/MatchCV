@@ -1,0 +1,40 @@
+# Secrets and runtime configuration
+.env
+.env.*
+!.env.example
+!.env.production.example
+backups/
+
+# Runtime data
+ai-service/data/
+*.db
+*.sqlite
+*.sqlite3
+
+# Python
+ai-service/.venv/
+**/__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Java
+java-backend/target/
+java-backend/.mvn/
+*.iml
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+
+# Logs and generated artifacts
+*.log
+ai-service/_smoke*
+.tmp/
+tmp/
+
+# Editors and operating systems
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db

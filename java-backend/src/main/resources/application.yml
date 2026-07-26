@@ -1,0 +1,104 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: agent-recruit-backend
+  mvc:
+    async:
+      request-timeout: 300000
+  datasource:
+    url: jdbc:mysql://${MYSQL_HOST:localhost}:${MYSQL_PORT:3308}/${MYSQL_DB:hellojobs}?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false
+    username: ${MYSQL_USER:root}
+    password: ${MYSQL_PASSWORD:hellojobs123}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6380}
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: true
+  servlet:
+    multipart:
+      max-file-size: 10MB
+      max-request-size: 100MB
+
+rocketmq:
+  name-server: ${ROCKETMQ_NAME_SERVER:localhost:9876}
+  producer:
+    group: ${ROCKETMQ_PRODUCER_GROUP:agent-recruit-producer}
+    send-message-timeout: ${ROCKETMQ_SEND_TIMEOUT_MS:3000}
+
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+  global-config:
+    db-config:
+      id-type: auto
+  mapper-locations: classpath*:mapper/*.xml
+
+# ── Application-specific config ──────────────────────────────────────────
+app:
+  environment: ${APP_ENV:development}
+  jwt:
+    # 必须与 Python 端 .env 的 JWT_SECRET 一致，两服务才能互认 token。
+    # 不提供仿真默认值：没配置就用一个明显的占位符，避免误把它当成"已配置好"的真实密钥。
+    secret: ${JWT_SECRET:change-me-in-production-use-random-32-bytes}
+    # 单一 token 模型，没有 access/refresh 之分：过期后重新登录即可，不做静默续期。
+    token-expire-minutes: ${TOKEN_EXPIRE_MINUTES:10080}
+  cors:
+    origins: ${CORS_ORIGINS:http://localhost:5173,http://localhost:5174,http://localhost:8080,http://localhost:18008,http://127.0.0.1:18008}
+  admin:
+    username: ${ADMIN_USERNAME:admin}
+    password: ${ADMIN_PASSWORD:admin123}
+  login:
+    max-fail: 5
+    block-minutes: 15
+  captcha:
+    expires-seconds: ${CAPTCHA_EXPIRES_SECONDS:180}
+  candidate-detail-cache:
+    enabled: ${CANDIDATE_DETAIL_CACHE_ENABLED:true}
+    ttl-seconds: ${CANDIDATE_DETAIL_CACHE_TTL_SECONDS:300}
+    ttl-jitter-seconds: ${CANDIDATE_DETAIL_CACHE_TTL_JITTER_SECONDS:120}
+    null-ttl-seconds: ${CANDIDATE_DETAIL_CACHE_NULL_TTL_SECONDS:30}
+    second-evict-delay-ms: ${CANDIDATE_DETAIL_CACHE_SECOND_EVICT_DELAY_MS:1000}
+  ai:
+    # Python AI 服务地址（用于 /api/recruit* 反向代理）
+    base-url: ${AI_SERVICE_URL:http://localhost:8008}
+    # 仅 Java -> Python 内部接口使用；生产环境必须替换为随机长密钥。
+    internal-token: ${INTERNAL_SERVICE_TOKEN:dev-internal-token-change-in-production}
+  resume:
+    # 简历保存目录，需与 Python 端 RESUME_DIR 指向同一目录，向量库才能读到。
+    # 默认值是明显的占位符，实际部署必须通过 RESUME_DIR 环境变量显式指定。
+    dir: ${RESUME_DIR:/change-me/data/resumes}
+    executor:
+      core-size: ${RESUME_PARSE_CORE_SIZE:2}
+      max-size: ${RESUME_PARSE_MAX_SIZE:4}
+      queue-capacity: ${RESUME_PARSE_QUEUE_CAPACITY:100}
+    local-max-attempts: ${RESUME_PARSE_LOCAL_MAX_ATTEMPTS:3}
+    processing-timeout-minutes: ${RESUME_PARSE_TIMEOUT_MINUTES:10}
+    outbox:
+      batch-size: ${RESUME_PARSE_OUTBOX_BATCH_SIZE:50}
+      scan-interval-ms: ${RESUME_PARSE_OUTBOX_SCAN_MS:5000}
+      recovery-interval-ms: ${RESUME_PARSE_RECOVERY_SCAN_MS:60000}
+  rocketmq:
+    enabled: ${APP_ROCKETMQ_ENABLED:true}
+    topics:
+      resume-parse: ${ROCKETMQ_RESUME_PARSE_TOPIC:agent-recruit-resume-parse}
+    consumer-groups:
+      resume-parse: ${ROCKETMQ_RESUME_PARSE_CONSUMER_GROUP:agent-recruit-resume-parse-consumer}
+
+# ── Knife4j / OpenAPI ────────────────────────────────────────────────────
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+knife4j:
+  enable: true
+  setting:
+    language: zh_cn
+
+logging:
+  level:
+    com.agentrecruit: INFO

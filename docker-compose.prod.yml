@@ -1,0 +1,95 @@
+x-production-service: &production-service
+  restart: unless-stopped
+  logging:
+    driver: json-file
+    options:
+      max-size: "20m"
+      max-file: "5"
+
+services:
+  db:
+    <<: *production-service
+    mem_limit: 1g
+    cpus: 1.0
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_PASSWORD:?MYSQL_PASSWORD is required}
+
+  redis:
+    <<: *production-service
+    mem_limit: 256m
+    cpus: 0.5
+
+  pgvector:
+    <<: *production-service
+    mem_limit: 1536m
+    cpus: 1.5
+    environment:
+      POSTGRES_USER: ${PGVECTOR_USER:-matchcv}
+      POSTGRES_PASSWORD: ${PGVECTOR_PASSWORD:?PGVECTOR_PASSWORD is required}
+      POSTGRES_DB: ${PGVECTOR_DB:-resume_vectors}
+
+  namesrv:
+    <<: *production-service
+    mem_limit: 768m
+    cpus: 0.5
+    environment:
+      HEAP_OPTS: "-Xms256m -Xmx256m -Xmn128m"
+
+  broker:
+    <<: *production-service
+    mem_limit: 2g
+    cpus: 1.0
+    environment:
+      HEAP_OPTS: "-Xms768m -Xmx768m -Xmn384m -XX:MaxDirectMemorySize=512m"
+
+  ai-service:
+    <<: *production-service
+    mem_limit: 3g
+    cpus: 2.0
+    environment:
+      APP_ENV: production
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:?INTERNAL_SERVICE_TOKEN is required}
+      PGVECTOR_PASSWORD: ${PGVECTOR_PASSWORD:?PGVECTOR_PASSWORD is required}
+      CORS_ORIGINS: ${APP_SCHEME:-https}://${APP_DOMAIN:?APP_DOMAIN is required}
+
+  java-backend:
+    <<: *production-service
+    mem_limit: 1536m
+    cpus: 1.5
+    environment:
+      APP_ENV: production
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?MYSQL_PASSWORD is required}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:?INTERNAL_SERVICE_TOKEN is required}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?ADMIN_PASSWORD is required}
+      CORS_ORIGINS: ${APP_SCHEME:-https}://${APP_DOMAIN:?APP_DOMAIN is required}
+
+  frontend:
+    <<: *production-service
+    mem_limit: 128m
+    cpus: 0.25
+
+  caddy:
+    image: caddy:2.8.4-alpine
+    <<: *production-service
+    mem_limit: 256m
+    cpus: 0.5
+    depends_on:
+      frontend:
+        condition: service_healthy
+    environment:
+      APP_SCHEME: ${APP_SCHEME:-https}
+      APP_DOMAIN: ${APP_DOMAIN:?APP_DOMAIN is required}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddydata:/data
+      - caddyconfig:/config
+
+volumes:
+  caddydata:
+  caddyconfig:
