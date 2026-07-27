@@ -9,7 +9,7 @@ SCHEME="${SCHEME:-https}"
 ADMIN_USERNAME="$(sed -n 's/^ADMIN_USERNAME=//p' "$ENV_FILE" | tail -n 1 | tr -d '\r')"
 ADMIN_PASSWORD="$(sed -n 's/^ADMIN_PASSWORD=//p' "$ENV_FILE" | tail -n 1 | tr -d '\r')"
 BASE_URL="$SCHEME://$DOMAIN"
-COMPOSE=(docker compose --env-file "$ENV_FILE" -f "$ROOT_DIR/docker-compose.yml" -f "$ROOT_DIR/docker-compose.prod.yml")
+COMPOSE=(docker compose --env-file "$ENV_FILE" -f "$ROOT_DIR/docker-compose.prod.yml")
 
 [[ -n "$DOMAIN" && -n "$SCHEME" && -n "$ADMIN_USERNAME" && -n "$ADMIN_PASSWORD" ]] || {
   echo "ERROR: .env.production 缺少访问地址或管理员凭据" >&2

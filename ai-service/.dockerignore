@@ -1,9 +1,11 @@
-.venv
-data
+node_modules
+frontend/node_modules
 __pycache__
-**/__pycache__
 .pytest_cache
-tests
-_smoke*
 *.pyc
-*.log
+.env
+data/
+static/
+.git
+.venv
+tests/

@@ -11,7 +11,7 @@ public class OpenApiConfig {
     @Bean
     public OpenAPI helloJobsOpenAPI() {
         return new OpenAPI().info(new Info()
-                .title("MatchCV 业务后端 API")
+                .title("AgentRecruit 业务后端 API")
                 .description("Java 业务后端（与 Python AI 服务共存）")
                 .version("1.0.0"));
     }

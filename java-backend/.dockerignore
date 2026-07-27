@@ -1,3 +1,4 @@
 target
-.mvn
+.git
+.idea
 *.log

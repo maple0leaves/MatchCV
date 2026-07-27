@@ -1104,7 +1104,7 @@ def tool_executor_node(state: AgentState) -> dict:
     # 放在这里、而不是 update_job_requirements 执行的那一刻：如果提前清空，
     # 一旦 Agent 调用完 update_job_requirements 后没有按预期继续走
     # search_candidates + score_candidates_batch，candidates/match_results
-    # 会以"已清空但没有重新填充"收场，前端看到空列表。
+    # 会以"已清空但没有重新填充"收场，前端会看到空列表。
     requirements_updated_earlier = _tool_called_earlier_in_round(
         state["messages"], "update_job_requirements"
     )

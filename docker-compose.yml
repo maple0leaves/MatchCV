@@ -1,6 +1,6 @@
 services:
   db:
-    image: mysql:8.0.39
+    image: mysql:8.0.42
     environment:
       MYSQL_DATABASE: hellojobs
       MYSQL_ROOT_PASSWORD: ${MYSQL_PASSWORD:-hellojobs123}
@@ -13,7 +13,7 @@ services:
       retries: 20
 
   redis:
-    image: redis:7.4.1-alpine
+    image: redis:7.4.5-alpine
     command: ["redis-server", "--appendonly", "yes"]
     volumes:
       - redisdata:/data

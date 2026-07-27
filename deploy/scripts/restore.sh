@@ -5,7 +5,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 ENV_FILE="${1:-$ROOT_DIR/.env.production}"
 BACKUP_DIR="${2:-}"
 BACKUP_ROOT="$(realpath -m "${BACKUP_ROOT:-$ROOT_DIR/backups}")"
-COMPOSE=(docker compose --env-file "$ENV_FILE" -f "$ROOT_DIR/docker-compose.yml" -f "$ROOT_DIR/docker-compose.prod.yml")
+COMPOSE=(docker compose --env-file "$ENV_FILE" -f "$ROOT_DIR/docker-compose.prod.yml")
 
 [[ "${RESTORE_CONFIRM:-}" == "restore" ]] || {
   echo "ERROR: 恢复会覆盖当前数据。确认后使用 RESTORE_CONFIRM=restore 运行。" >&2
@@ -28,11 +28,11 @@ restart_apps() {
 trap restart_apps EXIT
 
 "${COMPOSE[@]}" stop java-backend ai-service
-"${COMPOSE[@]}" exec -T db sh -c \
+docker exec -i shared-mysql sh -c \
   'exec mysql -uroot -p"$MYSQL_ROOT_PASSWORD" hellojobs' \
   < "$BACKUP_DIR/mysql.sql"
-"${COMPOSE[@]}" exec -T pgvector sh -c \
-  'exec psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" "$POSTGRES_DB"' \
+docker exec -i shared-pgvector sh -c \
+  'exec psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" resume_vectors' \
   < "$BACKUP_DIR/pgvector.sql"
 "${COMPOSE[@]}" run --rm --no-deps -T ai-service sh -c \
   'find /app/data/resumes /app/data/vector_store /app/data/checkpoints -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +; tar -C /app/data -xzf -' \

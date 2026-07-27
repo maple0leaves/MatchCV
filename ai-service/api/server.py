@@ -125,7 +125,7 @@ def _extract_adjustment_note(result: dict) -> Optional[str]:
     - 调用过 update_job_requirements，但没有调用 score_candidates_batch
       （Agent 没有按预期把三步走完）→ 返回一句提示：当前仍是调整前的旧结果，
       因为 agent.py::tool_executor_node 把"清空旧数据"推迟到 score_candidates_batch
-      真正执行时才做，这里展示的提示如实对应这一状态。
+      真正执行时才做，因此这里展示的提示对应当前结果状态。
     """
     messages = result.get("messages", [])
     round_messages = messages[_round_start_index(messages):]
@@ -528,7 +528,7 @@ async def recruit(request: RecruitmentInput, _user: dict = Depends(get_current_u
         )
     except asyncio.TimeoutError:
         # 兜底总时限：不管具体卡在 LLM 重试、embedding 还是别的环节，超时就直接
-        # 失败返回，而不是让请求无限期悬着。
+        # 失败返回，避免请求无限期悬着。
         logger.warning("recruit timed out after %ss, session_id=%s", RECRUIT_REQUEST_TIMEOUT_SECONDS, session_id)
         raise HTTPException(status_code=504, detail="匹配超时，请稍后重试")
     except AgentLoopLimitError:

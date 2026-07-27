@@ -1,3 +1,5 @@
+name: matchcv-production
+
 x-production-service: &production-service
   restart: unless-stopped
   logging:
@@ -7,89 +9,146 @@ x-production-service: &production-service
       max-file: "5"
 
 services:
-  db:
-    <<: *production-service
-    mem_limit: 1g
-    cpus: 1.0
-    environment:
-      MYSQL_ROOT_PASSWORD: ${MYSQL_PASSWORD:?MYSQL_PASSWORD is required}
-
-  redis:
-    <<: *production-service
-    mem_limit: 256m
-    cpus: 0.5
-
-  pgvector:
-    <<: *production-service
-    mem_limit: 1536m
-    cpus: 1.5
-    environment:
-      POSTGRES_USER: ${PGVECTOR_USER:-matchcv}
-      POSTGRES_PASSWORD: ${PGVECTOR_PASSWORD:?PGVECTOR_PASSWORD is required}
-      POSTGRES_DB: ${PGVECTOR_DB:-resume_vectors}
-
-  namesrv:
-    <<: *production-service
-    mem_limit: 768m
-    cpus: 0.5
-    environment:
-      HEAP_OPTS: "-Xms256m -Xmx256m -Xmn128m"
-
-  broker:
-    <<: *production-service
-    mem_limit: 2g
-    cpus: 1.0
-    environment:
-      HEAP_OPTS: "-Xms768m -Xmx768m -Xmn384m -XX:MaxDirectMemorySize=512m"
-
   ai-service:
+    build: ./ai-service
     <<: *production-service
-    mem_limit: 3g
-    cpus: 2.0
     environment:
       APP_ENV: production
+      API_HOST: 0.0.0.0
+      API_PORT: "8008"
+      CHECKPOINT_DB_PATH: /app/data/checkpoints/checkpoints.db
+      RESUME_DIR: /app/data/resumes
+      VECTOR_STORE_PATH: /app/data/vector_store
+      AGENT_RECURSION_LIMIT: ${AGENT_RECURSION_LIMIT:-12}
+      SESSION_TTL_DAYS: ${SESSION_TTL_DAYS:-7}
+      HYBRID_SEMANTIC_WEIGHT: ${HYBRID_SEMANTIC_WEIGHT:-0.7}
+      HYBRID_KEYWORD_WEIGHT: ${HYBRID_KEYWORD_WEIGHT:-0.3}
       JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:?INTERNAL_SERVICE_TOKEN is required}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:?OPENAI_API_KEY is required}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
+      LLM_MODEL: ${LLM_MODEL:-gpt-4o-mini}
+      LLM_TIMEOUT: ${LLM_TIMEOUT:-30}
+      LLM_STRUCTURED_METHOD: ${LLM_STRUCTURED_METHOD:-function_calling}
+      LLM_DISABLE_THINKING: ${LLM_DISABLE_THINKING:-false}
+      LLM_FORCE_FALLBACK: ${LLM_FORCE_FALLBACK:-false}
+      LLM_FALLBACK_API_KEY: ${LLM_FALLBACK_API_KEY:-}
+      LLM_FALLBACK_BASE_URL: ${LLM_FALLBACK_BASE_URL:-}
+      LLM_FALLBACK_MODEL: ${LLM_FALLBACK_MODEL:-}
+      LLM_FALLBACK_STRUCTURED_METHOD: ${LLM_FALLBACK_STRUCTURED_METHOD:-json_mode}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-text-embedding-3-small}
+      EMBEDDING_BACKEND: ${EMBEDDING_BACKEND:-openai}
+      EMBEDDING_API_KEY: ${EMBEDDING_API_KEY:-}
+      EMBEDDING_BASE_URL: ${EMBEDDING_BASE_URL:-}
+      OCR_ENABLED: ${OCR_ENABLED:-true}
+      OCR_MODEL: ${OCR_MODEL:-deepseek-ai/DeepSeek-OCR}
+      OCR_API_KEY: ${OCR_API_KEY:-}
+      OCR_BASE_URL: ${OCR_BASE_URL:-}
+      OCR_FALLBACK_MODELS: ${OCR_FALLBACK_MODELS:-Qwen/Qwen3-VL-8B-Instruct,PaddlePaddle/PaddleOCR-VL-1.5}
+      RERANK_ENABLED: ${RERANK_ENABLED:-false}
+      PGVECTOR_HOST: ${PGVECTOR_HOST:-shared-pgvector}
+      PGVECTOR_PORT: ${PGVECTOR_PORT:-5432}
+      PGVECTOR_DB: ${PGVECTOR_DB:-resume_vectors}
+      PGVECTOR_USER: ${PGVECTOR_USER:-matchcv_vector}
       PGVECTOR_PASSWORD: ${PGVECTOR_PASSWORD:?PGVECTOR_PASSWORD is required}
       CORS_ORIGINS: ${APP_SCHEME:-https}://${APP_DOMAIN:?APP_DOMAIN is required}
+    volumes:
+      - ${MATCHCV_DATA_DIR:?MATCHCV_DATA_DIR is required}/resumes:/app/data/resumes
+      - ${MATCHCV_DATA_DIR:?MATCHCV_DATA_DIR is required}/vector-store:/app/data/vector_store
+      - ${MATCHCV_DATA_DIR:?MATCHCV_DATA_DIR is required}/checkpoints:/app/data/checkpoints
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8008/api/health', timeout=3)\""]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+    cpus: "2.0"
+    mem_limit: 3g
+    networks:
+      - default
+      - shared-platform
 
   java-backend:
+    build:
+      context: ./java-backend
+      dockerfile: Dockerfile
     <<: *production-service
-    mem_limit: 1536m
-    cpus: 1.5
-    environment:
-      APP_ENV: production
-      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?MYSQL_PASSWORD is required}
-      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
-      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:?INTERNAL_SERVICE_TOKEN is required}
-      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?ADMIN_PASSWORD is required}
-      CORS_ORIGINS: ${APP_SCHEME:-https}://${APP_DOMAIN:?APP_DOMAIN is required}
-
-  frontend:
-    <<: *production-service
-    mem_limit: 128m
-    cpus: 0.25
-
-  caddy:
-    image: caddy:2.8.4-alpine
-    <<: *production-service
-    mem_limit: 256m
-    cpus: 0.5
     depends_on:
-      frontend:
+      ai-service:
         condition: service_healthy
     environment:
-      APP_SCHEME: ${APP_SCHEME:-https}
-      APP_DOMAIN: ${APP_DOMAIN:?APP_DOMAIN is required}
-    ports:
-      - "80:80"
-      - "443:443"
-      - "443:443/udp"
+      APP_ENV: production
+      MYSQL_HOST: ${MYSQL_HOST:-shared-mysql}
+      MYSQL_PORT: ${MYSQL_PORT:-3306}
+      MYSQL_DB: ${MYSQL_DB:-hellojobs}
+      MYSQL_USER: ${MYSQL_USER:-matchcv_app}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?MYSQL_PASSWORD is required}
+      REDIS_HOST: ${REDIS_HOST:-shared-redis}
+      REDIS_PORT: ${REDIS_PORT:-6379}
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
+      REDIS_DATABASE: ${REDIS_DATABASE:-1}
+      AI_SERVICE_URL: http://ai-service:8008
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:?INTERNAL_SERVICE_TOKEN is required}
+      RESUME_DIR: /app/data/resumes
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
+      CORS_ORIGINS: ${APP_SCHEME:-https}://${APP_DOMAIN:?APP_DOMAIN is required}
+      APP_ROCKETMQ_ENABLED: ${APP_ROCKETMQ_ENABLED:-true}
+      ROCKETMQ_NAME_SERVER: ${ROCKETMQ_NAME_SERVER:-shared-rocketmq-namesrv:9876}
+      ROCKETMQ_PRODUCER_GROUP: ${ROCKETMQ_PRODUCER_GROUP:-agent-recruit-producer}
+      ROCKETMQ_RESUME_PARSE_TOPIC: ${ROCKETMQ_RESUME_PARSE_TOPIC:-agent-recruit-resume-parse}
+      ROCKETMQ_RESUME_PARSE_CONSUMER_GROUP: ${ROCKETMQ_RESUME_PARSE_CONSUMER_GROUP:-agent-recruit-resume-parse-consumer}
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?ADMIN_PASSWORD is required}
+      CANDIDATE_DETAIL_CACHE_ENABLED: ${CANDIDATE_DETAIL_CACHE_ENABLED:-true}
+      CANDIDATE_DETAIL_CACHE_TTL_SECONDS: ${CANDIDATE_DETAIL_CACHE_TTL_SECONDS:-300}
+      CANDIDATE_DETAIL_CACHE_TTL_JITTER_SECONDS: ${CANDIDATE_DETAIL_CACHE_TTL_JITTER_SECONDS:-120}
+      CANDIDATE_DETAIL_CACHE_NULL_TTL_SECONDS: ${CANDIDATE_DETAIL_CACHE_NULL_TTL_SECONDS:-30}
+      CANDIDATE_DETAIL_CACHE_SECOND_EVICT_DELAY_MS: ${CANDIDATE_DETAIL_CACHE_SECOND_EVICT_DELAY_MS:-1000}
+      RESUME_PARSE_CORE_SIZE: ${RESUME_PARSE_CORE_SIZE:-2}
+      RESUME_PARSE_MAX_SIZE: ${RESUME_PARSE_MAX_SIZE:-4}
+      RESUME_PARSE_QUEUE_CAPACITY: ${RESUME_PARSE_QUEUE_CAPACITY:-100}
+      RESUME_PARSE_LOCAL_MAX_ATTEMPTS: ${RESUME_PARSE_LOCAL_MAX_ATTEMPTS:-3}
+      RESUME_PARSE_TIMEOUT_MINUTES: ${RESUME_PARSE_TIMEOUT_MINUTES:-10}
+      RESUME_PARSE_OUTBOX_BATCH_SIZE: ${RESUME_PARSE_OUTBOX_BATCH_SIZE:-50}
+      RESUME_PARSE_OUTBOX_SCAN_MS: ${RESUME_PARSE_OUTBOX_SCAN_MS:-5000}
+      RESUME_PARSE_RECOVERY_SCAN_MS: ${RESUME_PARSE_RECOVERY_SCAN_MS:-60000}
     volumes:
-      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddydata:/data
-      - caddyconfig:/config
+      - ${MATCHCV_DATA_DIR:?MATCHCV_DATA_DIR is required}/resumes:/app/data/resumes
+    healthcheck:
+      test: ["CMD-SHELL", "curl --fail --silent http://localhost:8080/api/health >/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 40s
+    cpus: "1.5"
+    mem_limit: 1536m
+    networks:
+      - default
+      - shared-platform
 
-volumes:
-  caddydata:
-  caddyconfig:
+  frontend:
+    build: ./frontend
+    <<: *production-service
+    depends_on:
+      java-backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1/"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    cpus: "0.25"
+    mem_limit: 128m
+    networks:
+      default:
+      shared-platform:
+        aliases:
+          - matchcv-frontend
+
+networks:
+  default:
+    name: matchcv-production
+  shared-platform:
+    external: true
+    name: ${SHARED_NETWORK:-shared-platform}

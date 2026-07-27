@@ -6,7 +6,7 @@ ENV_FILE="${1:-$ROOT_DIR/.env.production}"
 BACKUP_ROOT="${BACKUP_ROOT:-$ROOT_DIR/backups}"
 STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 DEST="$BACKUP_ROOT/$STAMP"
-COMPOSE=(docker compose --env-file "$ENV_FILE" -f "$ROOT_DIR/docker-compose.yml" -f "$ROOT_DIR/docker-compose.prod.yml")
+COMPOSE=(docker compose --env-file "$ENV_FILE" -f "$ROOT_DIR/docker-compose.prod.yml")
 
 mkdir -p "$DEST"
 chmod 700 "$DEST"
@@ -17,11 +17,11 @@ restart_apps() {
 trap restart_apps EXIT
 
 "${COMPOSE[@]}" stop java-backend ai-service
-"${COMPOSE[@]}" exec -T db sh -c \
+docker exec -i shared-mysql sh -c \
   'exec mysqldump -uroot -p"$MYSQL_ROOT_PASSWORD" --single-transaction --routines --events hellojobs' \
   > "$DEST/mysql.sql"
-"${COMPOSE[@]}" exec -T pgvector sh -c \
-  'exec pg_dump --clean --if-exists -U "$POSTGRES_USER" "$POSTGRES_DB"' \
+docker exec -i shared-pgvector sh -c \
+  'exec pg_dump --clean --if-exists -U "$POSTGRES_USER" resume_vectors' \
   > "$DEST/pgvector.sql"
 "${COMPOSE[@]}" run --rm --no-deps -T ai-service \
   tar -C /app/data -czf - resumes vector_store checkpoints \

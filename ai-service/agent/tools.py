@@ -278,7 +278,7 @@ logger = logging.getLogger(__name__)
 # /api/internal/parse-resume（Java 异步上传简历解析），与 Agent 的招聘匹配场景
 # 无关，绑定进来只会让 LLM 有机会在决策规则没有覆盖的场景下误调用它。
 #
-# arbitrate_candidates（仲裁复核）与 score_candidates_batch
+# arbitrate_candidates（仲裁复核）未绑定到这里：它和 score_candidates_batch
 # 阶段的 LLM 校准输入几乎一样（同一份简历全文 + JD）、输出语义也一样
 # （"要不要微调分数"），只是触发时机和幅度上限不同，本质是对同一件事
 # 又问了 LLM 一遍，撑不住"为什么要两层调整机制"的面试追问，因此直接

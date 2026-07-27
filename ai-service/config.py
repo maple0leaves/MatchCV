@@ -139,7 +139,7 @@ HYBRID_KEYWORD_WEIGHT = float(os.getenv("HYBRID_KEYWORD_WEIGHT", "0.3"))
 API_HOST = os.getenv("API_HOST", "0.0.0.0")
 API_PORT = int(os.getenv("API_PORT", "8000"))
 # /api/recruit(/refine) 的总硬上限：不管卡在哪一步（LLM 重试、embedding、pgvector），
-# 超过这个时间就直接失败返回，而不是让请求无限期悬着。
+# 超过这个时间就直接失败返回，避免请求无限期悬着。
 RECRUIT_REQUEST_TIMEOUT_SECONDS = float(os.getenv("RECRUIT_REQUEST_TIMEOUT_SECONDS", "90"))
 
 # ── JWT / Auth（Python 只做无状态校验，token 由 Java 端签发，单一 token 模型）──

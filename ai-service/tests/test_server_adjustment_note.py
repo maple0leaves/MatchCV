@@ -1,4 +1,4 @@
-"""Tests for api.server._extract_adjustment_note。"""
+"""Tests for api.server._extract_adjustment_note."""
 
 import json
 
@@ -64,7 +64,7 @@ def test_adjustment_note_warns_when_agent_stops_after_updating_requirements_only
     接着调用 score_candidates_batch。必须返回一句"仍是调整前结果"的提示，而不是
     None（会让前端误以为这轮反馈啥也没干）——这句提示要如实对应
     tool_executor_node 里"清空推迟到 score_candidates_batch 才做"的设计，此时
-    match_results 确实还是调整前的旧结果，不是编造的话术。"""
+    match_results 仍然是调整前的旧结果。"""
     result = {
         "messages": [
             HumanMessage(content="还要会 Kubernetes"),
