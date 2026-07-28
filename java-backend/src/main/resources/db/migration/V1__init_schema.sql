@@ -1,6 +1,6 @@
--- HelloJobs 业务表初始化（MySQL 8, utf8mb4）
--- schema 唯一归口于 Flyway；Python 端只读写、不建表。
--- 枚举列统一用 VARCHAR（不用 MySQL 原生 ENUM），与 SQLAlchemy 双写兼容。
+
+
+
 
 CREATE TABLE IF NOT EXISTS users (
     id              INT          NOT NULL AUTO_INCREMENT,

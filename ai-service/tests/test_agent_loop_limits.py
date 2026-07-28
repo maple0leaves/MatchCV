@@ -21,10 +21,10 @@ def test_graph_recursion_error_is_converted_to_application_error(monkeypatch):
         def invoke(self, input_state, config):
             raise GraphRecursionError("limit reached")
 
-    monkeypatch.setattr(main_mod, "recruitment_graph", LoopingGraph())
+    monkeypatch.setattr(main_mod, "admission_graph", LoopingGraph())
 
     with pytest.raises(main_mod.AgentLoopLimitError) as exc_info:
-        main_mod._invoke_recruitment_graph(
+        main_mod._invoke_admission_graph(
             {"messages": []},
             main_mod._graph_config("session-loop"),
         )
@@ -39,12 +39,12 @@ def test_session_entrypoints_reset_completion_guard_retry_budget(monkeypatch):
         captured_inputs.append(input_state)
         return input_state
 
-    monkeypatch.setattr(main_mod, "_invoke_recruitment_graph", fake_invoke)
+    monkeypatch.setattr(main_mod, "_invoke_admission_graph", fake_invoke)
     monkeypatch.setattr(main_mod, "_touch_session", lambda session_id, owner_user_id: None)
 
     main_mod.start_session(
         "session-new",
-        "招聘 Python 工程师",
+        "招生 具备 Python 基础的硕士生",
         owner_user_id=7,
     )
 
@@ -59,7 +59,7 @@ def test_session_entrypoints_reset_completion_guard_retry_budget(monkeypatch):
         def fetchone(self):
             return (7,)
 
-    monkeypatch.setattr(main_mod, "recruitment_graph", ExistingGraph())
+    monkeypatch.setattr(main_mod, "admission_graph", ExistingGraph())
     monkeypatch.setattr(main_mod, "_checkpoint_conn", ActivityConnection())
 
     main_mod.refine_session(

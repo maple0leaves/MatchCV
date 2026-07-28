@@ -1,4 +1,4 @@
-"""Structured observability helpers for the recruitment agent.
+"""Structured observability helpers for the admission agent.
 
 All functions degrade gracefully when LangSmith is not configured — they
 still collect local metrics and log to stderr so nothing breaks in dev.
@@ -12,7 +12,7 @@ import threading
 import time
 from typing import Any, Callable
 
-logger = logging.getLogger("recruitment.observability")
+logger = logging.getLogger("admission.observability")
 
 try:
     from langsmith import traceable as _ls_traceable
@@ -22,7 +22,7 @@ try:
 except ImportError:
     _HAS_LANGSMITH = False
 
-    def _ls_traceable(*args: Any, **kwargs: Any) -> Callable:  # type: ignore[misc]
+    def _ls_traceable(*args: Any, **kwargs: Any) -> Callable:
         """No-op fallback when langsmith is not installed."""
 
         def decorator(fn: Callable) -> Callable:
@@ -32,7 +32,7 @@ except ImportError:
             return args[0]
         return decorator
 
-    def get_current_run_tree() -> None:  # type: ignore[misc]
+    def get_current_run_tree() -> None:
         return None
 
 

@@ -1,4 +1,4 @@
-"""State and schema definitions for the recruitment agent system."""
+"""State and schema definitions for the admission agent system."""
 
 import re
 from typing import Annotated, Literal, Optional
@@ -7,9 +7,9 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 from langgraph.graph.message import add_messages
 
 
-# ── Candidate ──────────────────────────────────────────────────────────────
 
-class CandidateInfo(BaseModel):
+
+class StudentProfile(BaseModel):
     """Structured student information extracted from a resume."""
 
     name: str = Field(default="", description="学生姓名")
@@ -40,10 +40,10 @@ class CandidateInfo(BaseModel):
         return str(value)
 
 class ScoreBreakdown(BaseModel):
-    """Stable scoring facts captured when the candidate is evaluated."""
+    """Stable scoring facts captured when the student is evaluated."""
 
-    # 当用户只填写一个规则维度时，该维度会归一化为 100 分，因此上限不能再
-    # 绑定旧招聘场景的 65/20/15 固定分配。
+
+
     skill_points: float = Field(default=0, ge=0, le=100)
     education_points: float = Field(default=0, ge=0, le=100)
     rule_score: Optional[int] = Field(default=None, ge=0, le=100)
@@ -57,7 +57,7 @@ class ScoreBreakdown(BaseModel):
 class MatchResult(BaseModel):
     """Student-to-admission-criteria match evaluation result."""
 
-    candidate_name: str = Field(default="", description="学生姓名")
+    student_name: str = Field(default="", description="学生姓名")
     match_score: int = Field(default=0, ge=0, le=100, description="匹配分数 0-100")
     matched_skills: list[str] = Field(default_factory=list, description="匹配的技能")
     missing_skills: list[str] = Field(default_factory=list, description="缺失的技能")
@@ -176,13 +176,12 @@ class LLMScoreJudgment(BaseModel):
         return str(value)
 
 
-# ── JD ─────────────────────────────────────────────────────────────────────
 
-class JDInfo(BaseModel):
+
+class AdmissionCriteria(BaseModel):
     """Structured admission criteria.
 
-    为兼容现有跨服务接口继续使用 ``JDInfo`` 类名和原字段名；字段的业务语义
-    已从岗位招聘切换为导师招收硕士研究生。
+    描述导师招收硕士研究生时使用的方向与期望条件。
     """
 
     title: str = Field(default="", description="招收方向")
@@ -216,11 +215,11 @@ class JDInfo(BaseModel):
             return "；".join(str(item) for item in value.values() if item is not None)
         return str(value)
 
-class JDUpdateResult(BaseModel):
-    """``update_job_requirements`` 工具的结构化输出：合并反馈后的完整招收
+class AdmissionCriteriaUpdateResult(BaseModel):
+    """``update_admission_criteria`` 工具的结构化输出：合并反馈后的完整招收
     信息 + LLM 自己写的一句自然语言变更说明（供前端"调整结果"抽屉展示）。"""
 
-    jd_info: JDInfo = Field(description="合并用户反馈后的完整招收信息")
+    admission_criteria: AdmissionCriteria = Field(description="合并用户反馈后的完整招收信息")
     change_summary: str = Field(
         default="",
         description="一句话说明这次具体改了什么（如新增/移除了哪些技能、调整了哪个门槛）",
@@ -237,41 +236,41 @@ class JDUpdateResult(BaseModel):
         return str(value)
 
 
-# ── Main Graph State ────────────────────────────────────────────────────────
+
 
 class AgentState(TypedDict):
     """Full state for the single-agent ReAct workflow.
 
     只有 1 个 Agent（agent 节点）拥有任务级决策权；tools 节点只负责
     执行工具调用，自身不做决策。会话通过 session_id（= LangGraph
-    thread_id）在多次 /api/recruit/refine 调用间保持连续。
+    thread_id）在多次 /api/admission/refine 调用间保持连续。
     """
 
-    session_id: str                          # 会话 ID，等同 LangGraph thread_id
-    owner_user_id: int                       # 会话所属用户；检索和续聊必须一致
-    match_top_k: NotRequired[int]            # 首轮匹配召回候选人数
+    session_id: str
+    owner_user_id: int
+    match_top_k: NotRequired[int]
 
-    jd_info: Optional[JDInfo]               # 解析后的岗位信息
-    candidates: list[CandidateInfo]          # 检索到的学生列表
-    match_results: list[MatchResult]         # 匹配评分结果列表
+    admission_criteria: Optional[AdmissionCriteria]
+    students: list[StudentProfile]
+    match_results: list[MatchResult]
 
-    # search_candidates 最近一次的真实返回 JSON。score_candidates_batch
-    # 在"只重新打分、不重新检索"的反馈场景下要靠它拿到候选人数据（见
-    # agent/agent.py::tool_executor_node）。单独存成结构化字段、不依赖从
-    # messages 里现读，是为了让完整轮次滑动窗口可以安全移除旧消息而不破坏
-    # 重新打分路径——结构化业务状态和模型对话上下文各管一份，互不影响。
+
+
+
+
+
     last_search_result_json: NotRequired[str]
 
-    # 每次 API 请求开始时重置为 0；只用于限制当前轮次的流程完成补救最多两次，
-    # 不参与业务结果，也不需要数据库 schema 迁移。
+
+
     completion_guard_retries: NotRequired[int]
 
-    messages: Annotated[list, add_messages]  # 最近若干个完整 ReAct 轮次，含用户后续反馈
+    messages: Annotated[list, add_messages]
 
 
-# ── Input / Output schemas for API ─────────────────────────────────────────
 
-class RecruitmentInput(BaseModel):
+
+class AdmissionInput(BaseModel):
     """API request body."""
 
     user_input: str = Field(description="招生需求，例如：招收多模态大模型方向硕士研究生")
@@ -288,7 +287,7 @@ class RecruitmentInput(BaseModel):
         return text
 
 
-class RecruitmentOutput(BaseModel):
+class AdmissionOutput(BaseModel):
     """API response body."""
 
     session_id: str = Field(description="会话 ID，追加反馈时需带上")
@@ -296,14 +295,14 @@ class RecruitmentOutput(BaseModel):
     adjustment_note: Optional[str] = Field(
         default=None,
         description=(
-            "仅当这一轮反馈触发了期望条件调整（update_job_requirements）时才有值，"
+            "仅当这一轮反馈触发了期望条件调整（update_admission_criteria）时才有值，"
             "说明具体改了什么，或在未完成重新检索打分时提示当前仍是调整前的结果。"
-            "供前端「调整结果」抽屉展示，/api/recruit 首次匹配恒为 None"
+            "供前端「调整结果」抽屉展示，/api/admission 首次匹配恒为 None"
         ),
     )
 
 
-class CandidateChatMessage(BaseModel):
+class StudentChatMessage(BaseModel):
     """One bounded client-side conversation message."""
 
     role: Literal["user", "assistant"]
@@ -318,13 +317,13 @@ class CandidateChatMessage(BaseModel):
         return value
 
 
-class CandidateChatRequest(BaseModel):
-    """Ask one read-only question about one candidate in a matching session."""
+class StudentChatRequest(BaseModel):
+    """Ask one read-only question about one student in a matching session."""
 
     session_id: str = Field(min_length=1, max_length=128)
     resume_source: str = Field(min_length=1, max_length=1000)
     message: str = Field(min_length=1, max_length=1000)
-    history: list[CandidateChatMessage] = Field(default_factory=list, max_length=8)
+    history: list[StudentChatMessage] = Field(default_factory=list, max_length=8)
 
     @field_validator("session_id", "resume_source", "message")
     @classmethod
@@ -335,5 +334,5 @@ class CandidateChatRequest(BaseModel):
         return value
 
 
-class CandidateChatResponse(BaseModel):
+class StudentChatResponse(BaseModel):
     answer: str

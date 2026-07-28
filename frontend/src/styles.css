@@ -909,7 +909,7 @@ button:disabled {
   backdrop-filter: var(--glass-blur);
   -webkit-backdrop-filter: var(--glass-blur);
   box-shadow: var(--shadow-md);
-  /* 同 .candidate-card：不能加 fill-mode both/forwards，会挡住 hover 的 transform。 */
+
   animation: card-in 460ms var(--ease-out-expo);
   transition:
     border-color 0.3s var(--ease-smooth),
@@ -1278,13 +1278,13 @@ button:disabled {
   background: var(--accent-soft);
 }
 
-.candidate-grid {
+.student-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 14px;
 }
 
-.candidate-card {
+.student-card {
   display: flex;
   min-height: 190px;
   flex-direction: column;
@@ -1296,9 +1296,9 @@ button:disabled {
   backdrop-filter: var(--glass-blur);
   -webkit-backdrop-filter: var(--glass-blur);
   box-shadow: var(--shadow-md);
-  /* 注意：这里不能加 fill-mode both/forwards——那样动画结束后会用"动画"级联
-     优先级把 transform 钉在最后一帧的值上，比下面 :hover 这种普通声明优先级更高，
-     会导致 hover 的 transform 完全不生效（也不会触发 transition）。 */
+
+
+
   animation: card-in 480ms var(--ease-out-expo);
   transition:
     border-color 0.3s var(--ease-smooth),
@@ -1311,23 +1311,23 @@ button:disabled {
   to { opacity: 1; transform: translateY(0); }
 }
 
-.candidate-card:hover {
+.student-card:hover {
   border-color: rgba(62, 199, 255, 0.6);
   box-shadow: var(--shadow-lg), var(--shadow-glow);
   transform: translateY(-9px) scale(1.025);
 }
 
-.candidate-card:hover .candidate-person strong {
+.student-card:hover .student-person strong {
   color: #7ad8ff;
 }
 
-.candidate-card:hover .match-summary,
-.candidate-card:hover .candidate-person > div > span,
-.candidate-card:hover .candidate-person small {
+.student-card:hover .match-summary,
+.student-card:hover .student-person > div > span,
+.student-card:hover .student-person small {
   color: #c2cfdd;
 }
 
-.candidate-card-top {
+.student-card-top {
   display: flex;
   align-items: flex-start;
   justify-content: flex-end;
@@ -1354,12 +1354,12 @@ button:disabled {
   font-weight: 650;
 }
 
-.candidate-person {
+.student-person {
   display: flex;
   gap: 12px;
 }
 
-.candidate-avatar {
+.student-avatar {
   display: grid;
   width: 44px;
   height: 44px;
@@ -1377,20 +1377,20 @@ button:disabled {
 .avatar-4 { border-color: #725063; background: #2d2028; color: #e8abc6; }
 .avatar-5 { border-color: #436669; background: #19282a; color: #9ecdd0; }
 
-.candidate-person > div {
+.student-person > div {
   display: flex;
   min-width: 0;
   flex-direction: column;
   gap: 3px;
 }
 
-.candidate-person strong {
+.student-person strong {
   color: var(--accent);
   font-size: 1.2rem;
   transition: color 0.3s var(--ease-smooth);
 }
 
-.candidate-person > div > span {
+.student-person > div > span {
   overflow: hidden;
   color: var(--text-sub);
   font-size: 0.88rem;
@@ -1398,7 +1398,7 @@ button:disabled {
   white-space: nowrap;
 }
 
-.candidate-person small {
+.student-person small {
   display: flex;
   align-items: center;
   gap: 4px;
@@ -1406,8 +1406,8 @@ button:disabled {
   font-size: 0.8rem;
 }
 
-.candidate-person small i,
-.candidate-profile > div > span i {
+.student-person small i,
+.student-profile > div > span i {
   width: 3px;
   height: 3px;
   margin: 0 3px;
@@ -1494,7 +1494,7 @@ button:disabled {
   -webkit-line-clamp: 3;
 }
 
-.candidate-card-footer {
+.student-card-footer {
   display: flex;
   align-items: center;
   justify-content: flex-end;
@@ -1577,7 +1577,7 @@ button:disabled {
   to { opacity: 1; }
 }
 
-.candidate-drawer,
+.student-drawer,
 .side-panel {
   position: absolute;
   top: 0;
@@ -1595,7 +1595,7 @@ button:disabled {
   animation: drawer-in 340ms var(--ease-out-expo);
 }
 
-.candidate-drawer::before,
+.student-drawer::before,
 .side-panel::before {
   content: "";
   position: absolute;
@@ -1769,7 +1769,7 @@ button:disabled {
   line-height: 1.55;
 }
 
-.candidate-profile {
+.student-profile {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
@@ -1778,7 +1778,7 @@ button:disabled {
   border-bottom: 1px solid var(--border-glass);
 }
 
-.candidate-profile h2 {
+.student-profile h2 {
   margin: 0;
   font-family: var(--font-display);
   color: var(--accent);
@@ -1786,13 +1786,13 @@ button:disabled {
   font-weight: 600;
 }
 
-.candidate-profile p {
+.student-profile p {
   margin: 4px 0 7px;
   color: var(--text-sub);
   font-size: 1.05rem;
 }
 
-.candidate-profile > div > span {
+.student-profile > div > span {
   display: flex;
   align-items: center;
   gap: 4px;
@@ -1855,7 +1855,7 @@ button:disabled {
   line-height: 1.75;
 }
 
-.candidate-chat-shell {
+.student-chat-shell {
   overflow: hidden;
   border: 1px solid rgba(62, 199, 255, 0.18);
   border-left: 2px solid var(--accent);
@@ -1870,7 +1870,7 @@ button:disabled {
   box-shadow: inset 0 1px 0 rgba(62, 199, 255, 0.035);
 }
 
-.candidate-chat-messages {
+.student-chat-messages {
   display: flex;
   min-height: 108px;
   max-height: 320px;
@@ -1880,7 +1880,7 @@ button:disabled {
   padding: 14px;
 }
 
-.candidate-chat-empty {
+.student-chat-empty {
   display: flex;
   min-height: 80px;
   align-items: flex-start;
@@ -1888,30 +1888,30 @@ button:disabled {
   color: var(--text-sub);
 }
 
-.candidate-chat-empty svg {
+.student-chat-empty svg {
   flex: 0 0 auto;
   margin-top: 2px;
   color: var(--accent);
 }
 
-.candidate-chat-empty p {
+.student-chat-empty p {
   margin: 0;
   font-size: 0.95rem;
   font-weight: 500;
   line-height: 1.7;
 }
 
-.candidate-chat-message {
+.student-chat-message {
   display: flex;
   align-items: flex-start;
   gap: 8px;
 }
 
-.candidate-chat-message.is-user {
+.student-chat-message.is-user {
   flex-direction: row-reverse;
 }
 
-.candidate-chat-avatar {
+.student-chat-avatar {
   display: grid;
   width: 26px;
   height: 26px;
@@ -1923,18 +1923,18 @@ button:disabled {
   color: var(--text-sub);
 }
 
-.candidate-chat-message.is-assistant .candidate-chat-avatar {
+.student-chat-message.is-assistant .student-chat-avatar {
   border-color: rgba(62, 199, 255, 0.28);
   background: var(--accent-soft);
   color: var(--accent);
 }
 
-.candidate-chat-message.is-assistant .candidate-chat-bubble {
+.student-chat-message.is-assistant .student-chat-bubble {
   border-color: rgba(62, 199, 255, 0.15);
   background: rgba(62, 199, 255, 0.038);
 }
 
-.candidate-chat-bubble {
+.student-chat-bubble {
   max-width: calc(100% - 42px);
   margin: 0;
   padding: 9px 11px;
@@ -1947,7 +1947,7 @@ button:disabled {
   overflow-wrap: anywhere;
 }
 
-.candidate-chat-message.is-user .candidate-chat-bubble {
+.student-chat-message.is-user .student-chat-bubble {
   border-color: rgba(62, 199, 255, 0.25);
   border-radius: var(--radius-sm) 2px var(--radius-sm) var(--radius-sm);
   background: var(--accent-soft);
@@ -1956,78 +1956,78 @@ button:disabled {
   white-space: pre-wrap;
 }
 
-.candidate-chat-message.is-pending .candidate-chat-bubble {
+.student-chat-message.is-pending .student-chat-bubble {
   display: inline-flex;
   align-items: center;
   gap: 7px;
   color: var(--text-sub);
 }
 
-.candidate-chat-markdown {
+.student-chat-markdown {
   white-space: normal;
 }
 
-.candidate-chat-markdown > :first-child {
+.student-chat-markdown > :first-child {
   margin-top: 0;
 }
 
-.candidate-chat-markdown > :last-child {
+.student-chat-markdown > :last-child {
   margin-bottom: 0;
 }
 
-.candidate-chat-markdown p,
-.candidate-chat-markdown ul,
-.candidate-chat-markdown ol,
-.candidate-chat-markdown blockquote,
-.candidate-chat-markdown pre,
-.candidate-chat-markdown table {
+.student-chat-markdown p,
+.student-chat-markdown ul,
+.student-chat-markdown ol,
+.student-chat-markdown blockquote,
+.student-chat-markdown pre,
+.student-chat-markdown table {
   margin: 0 0 0.75em;
 }
 
-.candidate-chat-markdown h1,
-.candidate-chat-markdown h2,
-.candidate-chat-markdown h3,
-.candidate-chat-markdown h4 {
+.student-chat-markdown h1,
+.student-chat-markdown h2,
+.student-chat-markdown h3,
+.student-chat-markdown h4 {
   margin: 1em 0 0.45em;
   color: var(--text-main);
   font-weight: 700;
   line-height: 1.35;
 }
 
-.candidate-chat-markdown h1 {
+.student-chat-markdown h1 {
   font-size: 1rem;
 }
 
-.candidate-chat-markdown h2 {
+.student-chat-markdown h2 {
   font-size: 0.95rem;
 }
 
-.candidate-chat-markdown h3,
-.candidate-chat-markdown h4 {
+.student-chat-markdown h3,
+.student-chat-markdown h4 {
   font-size: 0.88rem;
 }
 
-.candidate-chat-markdown ul,
-.candidate-chat-markdown ol {
+.student-chat-markdown ul,
+.student-chat-markdown ol {
   padding-left: 1.35rem;
 }
 
-.candidate-chat-markdown li {
+.student-chat-markdown li {
   margin: 0.25em 0;
 }
 
-.candidate-chat-markdown li::marker,
-.candidate-chat-markdown strong {
+.student-chat-markdown li::marker,
+.student-chat-markdown strong {
   color: var(--accent);
 }
 
-.candidate-chat-markdown blockquote {
+.student-chat-markdown blockquote {
   padding: 0.2em 0 0.2em 0.75em;
   border-left: 2px solid rgba(62, 199, 255, 0.55);
   color: var(--text-sub);
 }
 
-.candidate-chat-markdown code {
+.student-chat-markdown code {
   padding: 0.12em 0.35em;
   border: 1px solid var(--border-glass);
   border-radius: 4px;
@@ -2037,7 +2037,7 @@ button:disabled {
   font-size: 0.78rem;
 }
 
-.candidate-chat-markdown pre {
+.student-chat-markdown pre {
   overflow-x: auto;
   padding: 10px 12px;
   border: 1px solid var(--border-glass);
@@ -2045,53 +2045,53 @@ button:disabled {
   background: rgba(0, 0, 0, 0.32);
 }
 
-.candidate-chat-markdown pre code {
+.student-chat-markdown pre code {
   padding: 0;
   border: 0;
   background: transparent;
   color: #cfeaf3;
 }
 
-.candidate-chat-markdown a {
+.student-chat-markdown a {
   color: var(--accent);
   text-decoration: underline;
   text-underline-offset: 2px;
 }
 
-.candidate-chat-markdown table {
+.student-chat-markdown table {
   display: block;
   max-width: 100%;
   overflow-x: auto;
   border-collapse: collapse;
 }
 
-.candidate-chat-markdown th,
-.candidate-chat-markdown td {
+.student-chat-markdown th,
+.student-chat-markdown td {
   padding: 6px 8px;
   border: 1px solid var(--border-glass);
   text-align: left;
   white-space: nowrap;
 }
 
-.candidate-chat-markdown th {
+.student-chat-markdown th {
   background: var(--accent-soft);
   color: var(--text-main);
 }
 
-.candidate-chat-markdown hr {
+.student-chat-markdown hr {
   margin: 0.8em 0;
   border: 0;
   border-top: 1px solid var(--border-glass);
 }
 
-.candidate-chat-suggestions {
+.student-chat-suggestions {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 7px;
   padding: 0 14px 14px;
 }
 
-.candidate-chat-suggestions button {
+.student-chat-suggestions button {
   min-height: 38px;
   padding: 7px 9px;
   border: 1px solid rgba(126, 182, 255, 0.34);
@@ -2104,19 +2104,19 @@ button:disabled {
   text-align: left;
 }
 
-.candidate-chat-suggestions button:hover:not(:disabled) {
+.student-chat-suggestions button:hover:not(:disabled) {
   border-color: rgba(62, 199, 255, 0.68);
   background: var(--accent-soft);
   color: var(--text-main);
 }
 
-.candidate-chat-suggestions button:focus-visible {
+.student-chat-suggestions button:focus-visible {
   border-color: var(--accent);
   outline: 2px solid rgba(62, 199, 255, 0.22);
   outline-offset: 1px;
 }
 
-.candidate-chat-error {
+.student-chat-error {
   margin: 0 14px 10px;
   padding: 8px 10px;
   border-left: 2px solid var(--amber);
@@ -2126,13 +2126,13 @@ button:disabled {
   line-height: 1.5;
 }
 
-.candidate-chat-form {
+.student-chat-form {
   padding: 15px 14px;
   border-top: 1px solid rgba(126, 182, 255, 0.3);
   background: rgba(9, 12, 18, 0.78);
 }
 
-.candidate-chat-form > label {
+.student-chat-form > label {
   position: absolute;
   width: 1px;
   height: 1px;
@@ -2142,14 +2142,14 @@ button:disabled {
   white-space: nowrap;
 }
 
-.candidate-chat-form > div {
+.student-chat-form > div {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 48px;
   gap: 10px;
   align-items: end;
 }
 
-.candidate-chat-form textarea {
+.student-chat-form textarea {
   width: 100%;
   min-height: 76px;
   max-height: 150px;
@@ -2167,16 +2167,16 @@ button:disabled {
   transition: border-color 0.2s var(--ease-smooth), box-shadow 0.2s var(--ease-smooth);
 }
 
-.candidate-chat-form textarea::placeholder {
+.student-chat-form textarea::placeholder {
   color: #84909e;
 }
 
-.candidate-chat-form textarea:focus {
+.student-chat-form textarea:focus {
   border-color: var(--accent);
   box-shadow: 0 0 0 3px rgba(62, 199, 255, 0.12), inset 0 0 18px rgba(62, 199, 255, 0.025);
 }
 
-.candidate-chat-form > div > button {
+.student-chat-form > div > button {
   display: grid;
   width: 48px;
   height: 48px;
@@ -2189,12 +2189,12 @@ button:disabled {
   transition: transform 0.2s var(--ease-smooth), filter 0.2s var(--ease-smooth);
 }
 
-.candidate-chat-form > div > button:hover:not(:disabled) {
+.student-chat-form > div > button:hover:not(:disabled) {
   filter: brightness(1.12);
   transform: translateY(-1px);
 }
 
-.candidate-chat-form > div > button:disabled {
+.student-chat-form > div > button:disabled {
   border-color: rgba(62, 199, 255, 0.36);
   background: rgba(62, 199, 255, 0.11);
   color: rgba(62, 199, 255, 0.55);
@@ -2372,7 +2372,7 @@ button:disabled {
 }
 
 @media (max-width: 1100px) {
-  .candidate-grid,
+  .student-grid,
   .library-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -2443,24 +2443,24 @@ button:disabled {
     align-items: stretch;
   }
 
-  .candidate-grid,
+  .student-grid,
   .library-grid {
     grid-template-columns: 1fr;
   }
 
-  .candidate-drawer,
+  .student-drawer,
   .side-panel {
     width: 100%;
     backdrop-filter: var(--glass-blur-sm);
     -webkit-backdrop-filter: var(--glass-blur-sm);
   }
 
-  .candidate-chat-suggestions {
+  .student-chat-suggestions {
     grid-template-columns: 1fr;
   }
 
   .resume-card,
-  .candidate-card {
+  .student-card {
     backdrop-filter: var(--glass-blur-sm);
     -webkit-backdrop-filter: var(--glass-blur-sm);
   }
@@ -2485,12 +2485,12 @@ button:disabled {
   }
 }
 
-/*
- * PDF 预览层只占屏幕左侧、抽屉宽度以外的区域，让预览和抽屉（候选人详情/简历详情）
- * 同屏左右并排，而不是盖在抽屉上面——所以这里不复用 .drawer-layer 的整屏背景，
- * 右边留给抽屉的宽度用 calc() 跟抽屉的 min(520px, 94vw) 保持一致，抽屉本身还有
- * 自己的一层背景，不需要在这里叠第二层整屏遮罩。
- */
+
+
+
+
+
+
 .pdf-preview-layer {
   position: fixed;
   top: 0;
@@ -2522,14 +2522,14 @@ button:disabled {
   animation: preview-pop 0.3s var(--ease-out-expo);
 }
 
-/*
- * 注意：不能直接复用 .auth-modal 的 auth-pop——那个动画的 translate(-50%, -50%)
- * 是配合 .auth-modal 自己的 position: absolute; top/left: 50% 定位方式设计的，
- * 动画结束后正好和 .auth-modal 的静态 transform 衔接上。这里的弹窗是靠 flex
- * 居中的，没有那个静态 transform 兜底，直接套用会导致动画期间被平移到自己
- * 尺寸一半的左上角，动画结束瞬间才"跳"回正确位置。所以单独定义一个不依赖
- * 绝对定位技巧的入场动画。
- */
+
+
+
+
+
+
+
+
 @keyframes preview-pop {
   from { opacity: 0; transform: translateY(14px) scale(0.98); }
   to { opacity: 1; transform: translateY(0) scale(1); }
@@ -2558,13 +2558,13 @@ button:disabled {
   white-space: nowrap;
 }
 
-/*
- * 浏览器内置的 PDF 阅读器在 iframe 里首次绘制时，会先按 PDF 页面原始尺寸画一个
- * 明显偏小的方块，等它自己算完"适应宽度"之后才撑满 iframe——这个过程发生在
- * PDF 插件内部，我们的外层弹窗 CSS/动画完全管不到。于是在 iframe 触发 load
- * （PDF 插件初始化完成）之前一直保持透明，只显示加载占位；load 后再淡入，
- * 这样用户看到的永远是"占位 -> 直接到位"，不会再看到中间那个跳动的小方块。
- */
+
+
+
+
+
+
+
 .pdf-preview-frame-wrap {
   position: relative;
   flex: 1;
@@ -2601,7 +2601,7 @@ button:disabled {
 }
 
 @media (max-width: 720px) {
-  /* 手机端抽屉本身是满宽的，没有"左右并排"的空间，预览退化为盖满全屏。 */
+
   .pdf-preview-layer {
     right: 0;
     padding: 0;

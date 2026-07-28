@@ -37,16 +37,16 @@ from config import (
     SCORE_CALIBRATION_RULE_WEIGHT,
 )
 
-# 硅基流动等网关用 extra_body.enable_thinking 控制混合思考模型是否思考；
-# 非该类网关会直接忽略这个多余字段，不影响兼容性。
+
+
 _THINKING_EXTRA_BODY = {"enable_thinking": False} if LLM_DISABLE_THINKING else None
 from agent.observability import log_tool_usage, trace_agent_step
 from agent.security import INJECTION_GUARD_SYSTEM, log_if_injection, wrap_untrusted
 from agent.schemas import (
     AgentState,
-    CandidateInfo,
-    JDInfo,
-    JDUpdateResult,
+    StudentProfile,
+    AdmissionCriteria,
+    AdmissionCriteriaUpdateResult,
     LLMScoreJudgment,
     MatchResult,
     ScoreBreakdown,
@@ -55,25 +55,25 @@ from agent.tools import ALL_TOOLS, TOOLS_BY_NAME
 from agent.prompt import (
     AGENT_SYSTEM_PROMPT,
     COMPLETION_GUARD_REPAIR_PROMPT,
-    JD_PARSE_PROMPT,
-    JD_UPDATE_PROMPT,
+    ADMISSION_CRITERIA_PARSE_PROMPT,
+    ADMISSION_CRITERIA_UPDATE_PROMPT,
     SCORE_CALIBRATION_PROMPT,
 )
 
 logger = logging.getLogger(__name__)
 
-# Agent 每次只看最近若干个完整对话轮次。业务事实由 jd_info / match_results /
-# last_search_result_json 等结构化 State 字段承载，不需要靠无限增长的消息历史保存。
+
+
 _CONTEXT_KEEP_ROUNDS = 3
 _CONTEXT_TEXT_LIMIT = 200
 _CONTEXT_SKILL_LIMIT = 8
-# 补救调用发生在同一个 LangGraph agent 节点内部，不会被 recursion_limit 单独
-# 计步，因此必须另设硬上限。两次刚好覆盖 update→search→score 的两个衔接点。
+
+
 _COMPLETION_GUARD_MAX_RETRIES = 2
 
 
 class SearchResultValidationError(ValueError):
-    """Raised when search_candidates returns data that cannot be scored safely."""
+    """Raised when search_students returns data that cannot be scored safely."""
 
 
 class AgentWorkflowIncompleteError(RuntimeError):
@@ -98,7 +98,7 @@ def _build_primary_llm(temperature: float = LLM_TEMPERATURE):
             api_key=OPENAI_API_KEY,
             base_url=OPENAI_BASE_URL,
             timeout=LLM_TIMEOUT,
-            default_headers={"HTTP-Referer": "https://github.com/recruitment-agent"},
+            default_headers={"HTTP-Referer": "https://github.com/admission-agent"},
             extra_body=_THINKING_EXTRA_BODY,
         )
     return init_chat_model(f"openai:{LLM_MODEL}", temperature=temperature)
@@ -114,7 +114,7 @@ def _build_fallback_llm(temperature: float = LLM_TEMPERATURE):
         api_key=LLM_FALLBACK_API_KEY,
         base_url=LLM_FALLBACK_BASE_URL,
         timeout=LLM_TIMEOUT,
-        default_headers={"HTTP-Referer": "https://github.com/recruitment-agent"},
+        default_headers={"HTTP-Referer": "https://github.com/admission-agent"},
         extra_body=_THINKING_EXTRA_BODY,
     )
 
@@ -146,13 +146,13 @@ def _build_structured_llm(schema, temperature: float = LLM_TEMPERATURE):
 
 
 _llm = _build_llm()
-_llm_jd = _build_structured_llm(JDInfo)
-_llm_jd_update = _build_structured_llm(JDUpdateResult)
+_admission_criteria_llm = _build_structured_llm(AdmissionCriteria)
+_admission_criteria_update_llm = _build_structured_llm(AdmissionCriteriaUpdateResult)
 _llm_with_tools = _llm.bind_tools(ALL_TOOLS, tool_choice="auto")
 
 
 def _state_top_k(state: AgentState) -> int:
-    """Read and clamp the requested candidate recall count from graph state."""
+    """Read and clamp the requested student recall count from graph state."""
     try:
         value = int(state.get("match_top_k") or RAG_TOP_K)
     except (TypeError, ValueError):
@@ -160,31 +160,31 @@ def _state_top_k(state: AgentState) -> int:
     return max(1, min(30, value))
 
 
-def _candidate_key(candidate: CandidateInfo) -> str:
-    """Create a stable key for candidate deduplication.
+def _student_key(student: StudentProfile) -> str:
+    """Create a stable key for student deduplication.
 
     优先用简历文件路径（唯一，一份简历对应一个文件），其次邮箱，最后才退化到
-    姓名——姓名不保证唯一（重名很常见），单独用姓名做 key 会导致同名候选人
-    在 candidate_map 里互相覆盖、静默丢数据。
+    姓名——姓名不保证唯一（重名很常见），单独用姓名做 key 会导致同名学生
+    在 student_map 里互相覆盖、静默丢数据。
     """
-    return candidate.source or candidate.email or candidate.name
+    return student.source or student.email or student.name
 
 
-def _coerce_candidate(value: CandidateInfo | dict | str) -> CandidateInfo:
-    """Convert tool outputs into CandidateInfo."""
-    if isinstance(value, CandidateInfo):
+def _coerce_student(value: StudentProfile | dict | str) -> StudentProfile:
+    """Convert tool outputs into StudentProfile."""
+    if isinstance(value, StudentProfile):
         return value
     if isinstance(value, str):
-        return CandidateInfo.model_validate_json(value)
-    return CandidateInfo.model_validate(value)
+        return StudentProfile.model_validate_json(value)
+    return StudentProfile.model_validate(value)
 
 
 def _dedupe_display_name(name: str, taken_names: set[str]) -> str:
-    """给重名候选人追加区分后缀，避免 match_map 用姓名做 key 时互相覆盖。
+    """给重名学生追加区分后缀，避免 match_map 用姓名做 key 时互相覆盖。
 
-    候选人姓名不保证唯一（同姓同名在真实简历库里并不罕见），但姓名同时也是
-    match_map 的 key、也是最终报告里 Agent 唯一能引用候选人的方式。必须在
-    候选人第一次写入 match_map 时就去重——事后再处理时，前一个同名候选人的
+    学生姓名不保证唯一（同姓同名在真实简历库里并不罕见），但姓名同时也是
+    match_map 的 key、也是最终报告里 Agent 唯一能引用学生的方式。必须在
+    学生第一次写入 match_map 时就去重——事后再处理时，前一个同名学生的
     数据已经被覆盖、不可恢复。
     """
     base = (name or "未知学生").strip() or "未知学生"
@@ -208,7 +208,7 @@ def _coerce_match_result(value: MatchResult | dict | str) -> MatchResult:
 def _validate_search_result(raw_result: str) -> tuple[str, int]:
     """Validate and normalize the private search payload stored in Agent State.
 
-    Candidate-controlled text must never be copied into the decision Agent's
+    Student-controlled text must never be copied into the decision Agent's
     ToolMessage. This helper validates the private payload first; the caller stores the
     normalized JSON in ``last_search_result_json`` and emits only a fixed observation.
     """
@@ -216,18 +216,18 @@ def _validate_search_result(raw_result: str) -> tuple[str, int]:
         payload = json.loads(raw_result)
     except (json.JSONDecodeError, TypeError) as exc:
         raise SearchResultValidationError(
-            "search_candidates returned invalid JSON"
+            "search_students returned invalid JSON"
         ) from exc
     if not isinstance(payload, list):
         raise SearchResultValidationError(
-            "search_candidates result must be a JSON array"
+            "search_students result must be a JSON array"
         )
 
-    normalized_candidates = []
+    normalized_students = []
     for index, item in enumerate(payload):
         if not isinstance(item, dict):
             raise SearchResultValidationError(
-                f"search_candidates item {index} must be an object"
+                f"search_students item {index} must be an object"
             )
         normalized = dict(item)
         for field in ("name", "email", "source", "content"):
@@ -239,13 +239,13 @@ def _validate_search_result(raw_result: str) -> tuple[str, int]:
             and not normalized.get("content", "").strip()
         ):
             raise SearchResultValidationError(
-                f"search_candidates item {index} has no resume source or content"
+                f"search_students item {index} has no resume source or content"
             )
-        normalized_candidates.append(normalized)
+        normalized_students.append(normalized)
 
     return (
-        json.dumps(normalized_candidates, ensure_ascii=False),
-        len(normalized_candidates),
+        json.dumps(normalized_students, ensure_ascii=False),
+        len(normalized_students),
     )
 
 
@@ -255,7 +255,7 @@ _NON_RULE_SKILL_MARKERS = (
     "项目经历",
     "项目经验",
     "实习经历",
-    "工作经历",
+    "科研与项目经历",
     "课程设计",
     "论文",
     "竞赛",
@@ -289,7 +289,7 @@ def _is_non_rule_skill(value: str) -> bool:
     return False
 
 
-def _normalize_master_admission_jd(jd_info: JDInfo, source_text: str = "") -> JDInfo:
+def _normalize_master_admission_criteria(admission_criteria: AdmissionCriteria, source_text: str = "") -> AdmissionCriteria:
     """Normalize parsed criteria for the master-admission-only product scope.
 
     ``title`` describes the degree being applied for, while
@@ -300,7 +300,7 @@ def _normalize_master_admission_jd(jd_info: JDInfo, source_text: str = "") -> JD
     """
     normalized_skills: list[str] = []
     seen: set[str] = set()
-    for raw_skill in jd_info.skills:
+    for raw_skill in admission_criteria.skills:
         skill = str(raw_skill).strip()
         key = skill.casefold()
         if not skill or key in seen or _is_non_rule_skill(skill):
@@ -309,7 +309,7 @@ def _normalize_master_admission_jd(jd_info: JDInfo, source_text: str = "") -> JD
         seen.add(key)
 
     explicit_current_education = _CURRENT_EDUCATION_RE.search(source_text or "")
-    education_requirement = (jd_info.education_requirement or "").strip()
+    education_requirement = (admission_criteria.education_requirement or "").strip()
     if explicit_current_education:
         education_requirement = explicit_current_education.group(1)
     elif not education_requirement or any(
@@ -317,49 +317,49 @@ def _normalize_master_admission_jd(jd_info: JDInfo, source_text: str = "") -> JD
     ):
         education_requirement = "本科"
 
-    return jd_info.model_copy(update={
+    return admission_criteria.model_copy(update={
         "skills": normalized_skills,
         "education_requirement": education_requirement,
     })
 
 
-def _parse_jd(user_input: str) -> JDInfo:
+def _parse_admission_criteria(user_input: str) -> AdmissionCriteria:
     """Parse and normalize master's admission criteria from user input."""
-    parsed = _llm_jd.invoke(JD_PARSE_PROMPT.format(user_input=user_input))
-    return _normalize_master_admission_jd(parsed, user_input)
+    parsed = _admission_criteria_llm.invoke(ADMISSION_CRITERIA_PARSE_PROMPT.format(user_input=user_input))
+    return _normalize_master_admission_criteria(parsed, user_input)
 
 
-def _update_job_requirements(old_jd: JDInfo, feedback_text: str) -> JDUpdateResult:
+def _update_admission_criteria(old_admission_criteria: AdmissionCriteria, feedback_text: str) -> AdmissionCriteriaUpdateResult:
     """用用户反馈增量合并已解析的招收信息（支持新增/修改/删除字段），LLM 同时
-    给出一句自然语言变更说明，供 update_job_requirements 工具、API 层的
+    给出一句自然语言变更说明，供 update_admission_criteria 工具、API 层的
     "调整说明"展示复用。任何异常都回退到原招收信息、不改变量，不让单次 LLM
     调用失败中断整个反馈流程（与 _llm_calibrate_score 的兜底风格一致）。
     """
-    prompt = JD_UPDATE_PROMPT.format(
-        jd_info=old_jd.model_dump_json(ensure_ascii=False),
+    prompt = ADMISSION_CRITERIA_UPDATE_PROMPT.format(
+        admission_criteria=old_admission_criteria.model_dump_json(ensure_ascii=False),
         feedback_text=feedback_text or "",
     )
     try:
-        updated = _llm_jd_update.invoke(prompt)
+        updated = _admission_criteria_update_llm.invoke(prompt)
         return updated.model_copy(update={
-            "jd_info": _normalize_master_admission_jd(updated.jd_info, feedback_text),
+            "admission_criteria": _normalize_master_admission_criteria(updated.admission_criteria, feedback_text),
         })
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         logger.warning("招收信息更新失败，保留原招收信息: %s", exc)
-        return JDUpdateResult(jd_info=old_jd, change_summary="")
+        return AdmissionCriteriaUpdateResult(admission_criteria=old_admission_criteria, change_summary="")
 
 
 _EMAIL_RE = re.compile(r"[\w.+-]+@[\w-]+\.[\w.-]+")
 
-# 候选人并行处理上限。简历数 <= 此值时全部并行；超出后按批处理，
-# 避免一次打爆 LLM 提供方的 RPM/TPM 限制。
-_CANDIDATE_PARALLELISM = int(os.getenv("CANDIDATE_PARALLELISM", "8"))
 
 
-def _process_one_candidate(
-    candidate_payload: dict,
-    jd_info: JDInfo | None,
-) -> tuple[CandidateInfo, MatchResult] | None:
+_STUDENT_PARALLELISM = int(os.getenv("STUDENT_PARALLELISM", "8"))
+
+
+def _process_one_student(
+    student_payload: dict,
+    admission_criteria: AdmissionCriteria | None,
+) -> tuple[StudentProfile, MatchResult] | None:
     """Build a student profile and score it against the admission criteria.
 
     先用确定性规则（技能 60%、学历 40%，按用户实际填写的维度归一化）算出
@@ -371,29 +371,29 @@ def _process_one_candidate(
     2. 通过 ``source`` 路径调 ``_read_resume_file``（带 LRU 缓存，零额外成本）
     3. 退化使用 ``content`` 摘要（短文本兜底）
     """
-    resume_text = candidate_payload.get("resume_text") or ""
-    source = candidate_payload.get("source", "")
+    resume_text = student_payload.get("resume_text") or ""
+    source = student_payload.get("source", "")
     if not resume_text and source:
         try:
             from agent.tools import _read_resume_file
 
             resume_text = _read_resume_file(source)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             print(f"⚠️ 读取简历失败 {source}: {exc}")
     if not resume_text:
-        resume_text = candidate_payload.get("content", "")
+        resume_text = student_payload.get("content", "")
     if not resume_text:
         return None
 
-    candidate = _local_candidate_info(candidate_payload, resume_text, jd_info)
-    match_result = _local_match_score(candidate, jd_info, resume_text)
-    match_result = _llm_calibrate_score(match_result, jd_info, resume_text)
-    match_result.resume_source = candidate_payload.get("source", "")
+    student = _local_student_profile(student_payload, resume_text, admission_criteria)
+    match_result = _local_match_score(student, admission_criteria, resume_text)
+    match_result = _llm_calibrate_score(match_result, admission_criteria, resume_text)
+    match_result.resume_source = student_payload.get("source", "")
     match_result.resume_text = resume_text
-    return candidate, match_result
+    return student, match_result
 
 
-# 进程内单例：校准用的结构化 LLM（无状态，可跨线程共享）。
+
 _LLM_SCORE_CALIBRATOR = None
 
 
@@ -405,7 +405,7 @@ def _get_score_calibrator():
     return _LLM_SCORE_CALIBRATOR
 
 
-def _llm_calibrate_score(base: MatchResult, jd_info: JDInfo | None, resume_text: str) -> MatchResult:
+def _llm_calibrate_score(base: MatchResult, admission_criteria: AdmissionCriteria | None, resume_text: str) -> MatchResult:
     """规则基线分 + LLM 独立语义分，按权重加权融合得到最终分数。
 
     这是"规则打底、LLM 只能 ±固定分微调"两段式设计的升级版：LLM 不再是在规则
@@ -452,16 +452,16 @@ def _llm_calibrate_score(base: MatchResult, jd_info: JDInfo | None, resume_text:
     t0 = time.monotonic()
     try:
         prompt = INJECTION_GUARD_SYSTEM + "\n\n" + SCORE_CALIBRATION_PROMPT.format(
-            jd_info=wrap_untrusted(jd_info.model_dump_json(), "job_description") if jd_info else "{}",
+            admission_criteria=wrap_untrusted(admission_criteria.model_dump_json(), "admission_criteria") if admission_criteria else "{}",
             matched_skills=", ".join(base.matched_skills) or "无",
             missing_skills=", ".join(base.missing_skills) or "无",
             resume_text=wrap_untrusted(resume_text[:SCORE_CALIBRATION_MAX_RESUME_CHARS], "resume"),
         )
         judgment = _get_score_calibrator().invoke(prompt)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         logger.warning(
-            "llm_call=score_calibration candidate=%s latency=%.1fms failed: %s",
-            base.candidate_name, (time.monotonic() - t0) * 1000, exc,
+            "llm_call=score_calibration student=%s latency=%.1fms failed: %s",
+            base.student_name, (time.monotonic() - t0) * 1000, exc,
         )
         print(f"⚠️ LLM 打分失败，回退规则分：{exc}")
         base.score_breakdown = base.score_breakdown.model_copy(update={
@@ -474,18 +474,18 @@ def _llm_calibrate_score(base: MatchResult, jd_info: JDInfo | None, resume_text:
         })
         return base
     logger.info(
-        "llm_call=score_calibration candidate=%s latency=%.1fms",
-        base.candidate_name, (time.monotonic() - t0) * 1000,
+        "llm_call=score_calibration student=%s latency=%.1fms",
+        base.student_name, (time.monotonic() - t0) * 1000,
     )
 
     ai_summary = (judgment.resume_summary or "").strip()
     if ai_summary:
         base.summary = ai_summary
 
-    # recommendation 只保留 LLM 的定性判断本身，不拼接"命中比例""规则/LLM
-    # 分数各是多少"这类打分过程的机械文案——用户只想看结论，不关心分数怎么
-    # 算出来的。只要 LLM 给出了理由，就用它替换掉规则阶段那句兜底文案，让
-    # "为什么"始终展示的是有信息量的定性说明。
+
+
+
+
     reason = (judgment.reasoning or "").strip()
     if reason:
         base.recommendation = reason
@@ -592,15 +592,15 @@ def _without_education_intent(text: str) -> str:
 def _extract_education(text: str) -> str:
     cleaned = _without_education_intent(text)
 
-    # 明确的学历状态优先于全文中的普通提及，例如项目说明里的“面向硕士生”。
+
     explicit_patterns = (
         (
             "博士",
             (
-                r"博士(?:研究生)?(?:在读|毕业|学历|学位|阶段|候选人)",
+                r"博士(?:研究生)?(?:在读|毕业|学历|学位|阶段|学生)",
                 r"(?:获|获得|取得|攻读|就读)[^。\n；;]{0,20}博士",
                 r"\bph\.?\s*d\.?\b",
-                r"\bdoctoral\s+(?:student|candidate|degree)\b",
+                r"\bdoctoral\s+(?:student|student|degree)\b",
                 r"\bdoctorate\b",
             ),
         ),
@@ -652,11 +652,11 @@ def _skill_in_text(skill: str, text_lower: str) -> bool:
     return any(variant in text_lower or variant in normalized_text for variant in variants)
 
 
-def _extract_candidate_skills(resume_text: str, jd_info: JDInfo | None) -> list[str]:
+def _extract_student_skills(resume_text: str, admission_criteria: AdmissionCriteria | None) -> list[str]:
     text_lower = resume_text.lower()
     skill_pool: list[str] = []
-    if jd_info:
-        skill_pool.extend(jd_info.skills or [])
+    if admission_criteria:
+        skill_pool.extend(admission_criteria.skills or [])
     skill_pool.extend(_COMMON_SKILLS)
 
     skills: list[str] = []
@@ -672,58 +672,58 @@ def _extract_candidate_skills(resume_text: str, jd_info: JDInfo | None) -> list[
     return skills
 
 
-def _local_candidate_info(candidate_payload: dict, resume_text: str, jd_info: JDInfo | None) -> CandidateInfo:
-    fallback_name = candidate_payload.get("name", "") or _derive_name_from_source(candidate_payload.get("source", ""))
-    email = candidate_payload.get("email", "")
+def _local_student_profile(student_payload: dict, resume_text: str, admission_criteria: AdmissionCriteria | None) -> StudentProfile:
+    fallback_name = student_payload.get("name", "") or _derive_name_from_source(student_payload.get("source", ""))
+    email = student_payload.get("email", "")
     if not email:
         match = _EMAIL_RE.search(resume_text)
         email = match.group(0) if match else ""
 
     lines = [line.strip() for line in resume_text.splitlines() if line.strip()]
-    return CandidateInfo(
+    return StudentProfile(
         name=_guess_name_from_resume(resume_text, fallback_name),
         email=email,
-        skills=_extract_candidate_skills(resume_text, jd_info),
+        skills=_extract_student_skills(resume_text, admission_criteria),
         education=_extract_education(resume_text),
         summary=" ".join(lines[:8])[:800],
-        source=candidate_payload.get("source", ""),
+        source=student_payload.get("source", ""),
     )
 
 
-# ── 硕士招生规则分基础权重（按实际填写维度归一化）────────────────────────────
-# 第一版保留现有 skills / education_requirement 字段，不新增动态量表：
-# 同时填写时技能 60%、学历 40%；只填写一个维度时，该维度归一化为 100%。
+
+
+
 _SKILL_WEIGHT = 60
 _EDUCATION_WEIGHT = 40
-_PROCEED_THRESHOLD = 60        # 建议推荐给导师面试的门槛，后续用真实排序校准
-_SKILL_UNKNOWN_RATIO = 0.7     # 未列技能和学历时的中性规则基线
+_PROCEED_THRESHOLD = 60
+_SKILL_UNKNOWN_RATIO = 0.7
 
 
-def _education_score(candidate_education: str, requirement: str) -> float:
+def _education_score(student_education: str, requirement: str) -> float:
     """学历匹配因子 [0,1]：达到/超过要求或无要求为 1.0，否则 0.0。"""
     if not requirement:
         return 1.0
     rank = {"专科": 1, "大专": 1, "本科": 2, "研究生": 3, "硕士": 3, "博士": 4}
     required = max((rank[key] for key in rank if key in requirement), default=0)
-    candidate = max((rank[key] for key in rank if key in candidate_education), default=0)
+    student = max((rank[key] for key in rank if key in student_education), default=0)
     if not required:
         return 1.0
-    return 1.0 if candidate >= required else 0.0
+    return 1.0 if student >= required else 0.0
 
 
-def _local_match_score(candidate: CandidateInfo, jd_info: JDInfo | None, resume_text: str) -> MatchResult:
-    text_lower = (resume_text + "\n" + " ".join(candidate.skills)).lower()
+def _local_match_score(student: StudentProfile, admission_criteria: AdmissionCriteria | None, resume_text: str) -> MatchResult:
+    text_lower = (resume_text + "\n" + " ".join(student.skills)).lower()
 
-    skills_required = [skill.strip() for skill in (jd_info.skills if jd_info else []) if skill.strip()]
-    education_requirement = (jd_info.education_requirement if jd_info else "").strip()
+    skills_required = [skill.strip() for skill in (admission_criteria.skills if admission_criteria else []) if skill.strip()]
+    education_requirement = (admission_criteria.education_requirement if admission_criteria else "").strip()
 
     matched = [skill for skill in skills_required if _skill_in_text(skill, text_lower)]
     missing = [skill for skill in skills_required if skill not in matched]
     skill_ratio = len(matched) / len(skills_required) if skills_required else _SKILL_UNKNOWN_RATIO
 
-    # 只给用户实际填写的规则维度分配权重，避免没有学历要求时所有学生自动
-    # 获得 40 分。若两个维度都没填，使用 70 分中性基线，把方向/项目等语义
-    # 判断主要交给 LLM；正常首轮仍要求至少有招收方向或技能。
+
+
+
     has_skills = bool(skills_required)
     has_education = bool(education_requirement)
     if has_skills and has_education:
@@ -741,17 +741,17 @@ def _local_match_score(candidate: CandidateInfo, jd_info: JDInfo | None, resume_
 
     skill_points = skill_ratio * skill_budget
     education_points = (
-        _education_score(candidate.education, education_requirement)
+        _education_score(student.education, education_requirement)
         * education_budget
     )
 
     score = int(round(skill_points + education_points))
     score = max(0, min(100, score))
 
-    # 打分明细（命中比例等）不在这里拼进 recommendation——用户不关心分数是怎么
-    # 算出来的，只关心结论；技能命中/缺口已经用 matched_skills/missing_skills
-    # 单独字段传给前端展示为技能标签，这里只给一句人话结论作为兜底文案，正常会
-    # 被后续 LLM 校准阶段生成的定性理由覆盖（见 _llm_calibrate_score）。
+
+
+
+
     recommendation = (
         "学生的技能与学历基本符合期望条件，建议推荐给导师面试进一步评估"
         if score >= _PROCEED_THRESHOLD
@@ -759,20 +759,20 @@ def _local_match_score(candidate: CandidateInfo, jd_info: JDInfo | None, resume_
     )
 
     return MatchResult(
-        candidate_name=candidate.name,
+        student_name=student.name,
         match_score=score,
         matched_skills=matched,
         missing_skills=missing,
         recommendation=recommendation,
         should_proceed=score >= _PROCEED_THRESHOLD,
-        education=candidate.education,
+        education=student.education,
         score_breakdown=ScoreBreakdown(
             skill_points=round(skill_points, 2),
             education_points=round(education_points, 2),
             rule_score=score,
             final_score=score,
         ),
-        summary=candidate.summary,
+        summary=student.summary,
     )
 
 
@@ -814,7 +814,7 @@ def _build_match_results_context(state: AgentState) -> str:
     """Serialize the authoritative current match state for the Agent system prompt.
 
     Once old dialogue rounds slide out of ``messages``, the Agent must not rely on an
-    old score_candidates_batch ToolMessage to remember current candidates. The compact
+    old score_students_batch ToolMessage to remember current students. The compact
     snapshot below is derived from the structured State, so it cannot drift away from
     the data returned to the API.
     """
@@ -822,7 +822,7 @@ def _build_match_results_context(state: AgentState) -> str:
     for value in state.get("match_results", []):
         result = _coerce_match_result(value)
         compact_results.append({
-            "candidate_name": result.candidate_name,
+            "student_name": result.student_name,
             "match_score": result.match_score,
             "matched_skills": result.matched_skills[:_CONTEXT_SKILL_LIMIT],
             "missing_skills": result.missing_skills[:_CONTEXT_SKILL_LIMIT],
@@ -836,30 +836,30 @@ def _build_match_results_context(state: AgentState) -> str:
     return json.dumps(compact_results, ensure_ascii=False, separators=(",", ":"))
 
 
-# ── Agent（唯一决策大脑）────────────────────────────────────────────────────
+
 
 
 @trace_agent_step("agent")
 def agent_node(state: AgentState) -> dict:
     """The single decision-making Agent. Decides what to do next, or answers directly."""
     updates: dict = {}
-    jd_info = state.get("jd_info")
+    admission_criteria = state.get("admission_criteria")
 
-    if jd_info is None:
+    if admission_criteria is None:
         last_human = next(
             (m for m in reversed(state["messages"]) if isinstance(m, HumanMessage)),
             None,
         )
         t0 = time.monotonic()
-        jd_info = _parse_jd(last_human.content if last_human else "")
-        logger.info("llm_call=jd_parse latency=%.1fms", (time.monotonic() - t0) * 1000)
-        updates["jd_info"] = jd_info
-        print(f"📋 招收信息解析完成：{jd_info.title or '未命名方向'}")
+        admission_criteria = _parse_admission_criteria(last_human.content if last_human else "")
+        logger.info("llm_call=admission_criteria_parse latency=%.1fms", (time.monotonic() - t0) * 1000)
+        updates["admission_criteria"] = admission_criteria
+        print(f"📋 招收信息解析完成：{admission_criteria.title or '未命名方向'}")
 
     system_message = {
         "role": "system",
         "content": AGENT_SYSTEM_PROMPT.format(
-            jd_info=jd_info.model_dump_json(ensure_ascii=False),
+            admission_criteria=admission_criteria.model_dump_json(ensure_ascii=False),
             requested_top_k=_state_top_k(state),
             match_results_context=_build_match_results_context(state),
         ),
@@ -877,7 +877,7 @@ def agent_node(state: AgentState) -> dict:
 
     completion_issue = None
     if not getattr(response, "tool_calls", None):
-        completion_issue = _completion_guard_issue(state, jd_info)
+        completion_issue = _completion_guard_issue(state, admission_criteria)
     if completion_issue:
         guard_retries = int(state.get("completion_guard_retries", 0) or 0)
         while not getattr(response, "tool_calls", None):
@@ -925,7 +925,7 @@ def route_from_agent(state: AgentState) -> Literal["tools", "__end__"]:
     return "__end__"
 
 
-# ── Compress（完整轮次滑动窗口，一轮结束时才跑）──────────────────────────────
+
 
 
 def _tool_name_for_call_id(messages: list, tool_call_id: str) -> str | None:
@@ -941,7 +941,7 @@ def _round_start_index(messages: list) -> int:
     """定位"这一轮"的起点——最近一条 HumanMessage 的下标。
 
     滑动窗口（compress_node）、判断"这一轮是否已经调用过某个工具"
-    （_tool_called_earlier_in_round）、提取"这一轮的岗位调整说明"
+    （_tool_called_earlier_in_round）、提取"这一轮的招生调整说明"
     （api/server.py::_extract_adjustment_note）三处场景都要先定位到同一个
     边界，抽成公共函数，避免各自维护一份可能不一致的实现。
     """
@@ -951,14 +951,14 @@ def _round_start_index(messages: list) -> int:
     return 0
 
 
-def _completion_guard_issue(state: AgentState, jd_info: JDInfo | None) -> str | None:
+def _completion_guard_issue(state: AgentState, admission_criteria: AdmissionCriteria | None) -> str | None:
     """Return why the current round may not terminate yet, or ``None`` if complete.
 
     This is deliberately a deterministic workflow check rather than another Agent. It
     only validates tool ordering that the system already requires:
 
     - a sufficiently specified first request must search before it can finish;
-    - an updated JD must be followed by a score, while a new search is optional;
+    - updated admission criteria must be followed by a score, while a new search is optional;
     - every search must be followed by a batch score, including an empty search result
       so an adjustment round can replace stale results with an empty result set.
     """
@@ -974,34 +974,34 @@ def _completion_guard_issue(state: AgentState, jd_info: JDInfo | None) -> str | 
 
     human_count = sum(isinstance(message, HumanMessage) for message in messages)
     is_first_round = round_start == 0 and human_count == 1
-    jd_is_sufficient = bool(
-        jd_info
+    admission_criteria_is_sufficient = bool(
+        admission_criteria
         and (
-            (jd_info.title or "").strip()
-            or any((skill or "").strip() for skill in jd_info.skills)
+            (admission_criteria.title or "").strip()
+            or any((skill or "").strip() for skill in admission_criteria.skills)
         )
     )
 
-    if is_first_round and jd_is_sufficient and "search_candidates" not in call_names:
-        return "首次匹配的岗位信息已经充分，但尚未调用 search_candidates"
+    if is_first_round and admission_criteria_is_sufficient and "search_students" not in call_names:
+        return "首次匹配的招生信息已经充分，但尚未调用 search_students"
 
     latest_update = max(
-        (index for index, name in enumerate(call_names) if name == "update_job_requirements"),
+        (index for index, name in enumerate(call_names) if name == "update_admission_criteria"),
         default=-1,
     )
     latest_search = max(
-        (index for index, name in enumerate(call_names) if name == "search_candidates"),
+        (index for index, name in enumerate(call_names) if name == "search_students"),
         default=-1,
     )
     latest_score = max(
-        (index for index, name in enumerate(call_names) if name == "score_candidates_batch"),
+        (index for index, name in enumerate(call_names) if name == "score_students_batch"),
         default=-1,
     )
 
     if latest_update >= 0 and latest_score <= latest_update:
-        return "岗位要求已经更新，但更新后尚未调用 score_candidates_batch"
+        return "期望条件已经更新，但更新后尚未调用 score_students_batch"
     if latest_search >= 0 and latest_score <= latest_search:
-        return "候选人已经检索，但检索后尚未调用 score_candidates_batch"
+        return "学生已经检索，但检索后尚未调用 score_students_batch"
     return None
 
 
@@ -1010,8 +1010,8 @@ def _tool_called_earlier_in_round(messages: list, tool_name: str) -> bool:
     已经调用过 ``tool_name``。
 
     用于 tool_executor_node 判断"这一轮更早的时候是否已经调用过
-    update_job_requirements"——是的话，score_candidates_batch 才需要清空旧的
-    candidate_map/match_map，做真正的"全量替换"（见 tool_executor_node 里的
+    update_admission_criteria"——是的话，score_students_batch 才需要清空旧的
+    student_map/match_map，做真正的"全量替换"（见 tool_executor_node 里的
     调用处）。排除最后一条消息，是因为它就是当前正在处理的这次工具调用本身，
     不应该被误判成"更早已经调用过"。
     """
@@ -1024,7 +1024,7 @@ def _tool_called_earlier_in_round(messages: list, tool_name: str) -> bool:
 
 
 def _latest_feedback_text(messages: list) -> str:
-    """取最近一条 HumanMessage 的原始文本。update_job_requirements 用它当
+    """取最近一条 HumanMessage 的原始文本。update_admission_criteria 用它当
     "HR 这次反馈说了什么"的输入，不依赖 LLM 在工具参数里复述一遍——复述既有
     转述失真的风险，也白白多花一次生成长文本的时间。
     """
@@ -1062,7 +1062,7 @@ def compress_node(state: AgentState) -> dict:
     }
 
 
-# ── Tools（工具执行器，不做决策）──────────────────────────────────────────────
+
 
 
 @trace_agent_step("tools")
@@ -1071,42 +1071,42 @@ def tool_executor_node(state: AgentState) -> dict:
     last_message = state["messages"][-1]
     tool_messages = []
 
-    candidate_map: dict[str, CandidateInfo] = {}
-    # 简历路径(_candidate_key) -> 当前展示名，用于识别"这份新打分结果对应的是不是
-    # 已经见过的同一个人"——多轮反馈（如"优化结果"）重新打分同一批候选人时，
-    # 必须复用旧展示名并覆盖旧条目，而不是被下面的姓名去重逻辑误判成"重名的
-    # 另一个人"，追加"（2）"后缀导致新旧两份结果同时出现在列表里。
+    student_map: dict[str, StudentProfile] = {}
+
+
+
+
     key_to_name: dict[str, str] = {}
-    for candidate in state.get("candidates", []):
-        coerced = _coerce_candidate(candidate)
-        key = _candidate_key(coerced)
-        candidate_map[key] = coerced
+    for student in state.get("students", []):
+        coerced = _coerce_student(student)
+        key = _student_key(coerced)
+        student_map[key] = coerced
         key_to_name[key] = coerced.name
 
     match_map: dict[str, MatchResult] = {}
     for result in state.get("match_results", []):
         coerced = _coerce_match_result(result)
-        match_map[coerced.candidate_name] = coerced
+        match_map[coerced.student_name] = coerced
 
-    # 默认沿用上一轮存下来的真实检索结果——如果这一轮反馈只调用
-    # score_candidates_batch、不重新调用 search_candidates（"只筛选/重新打分
-    # 已有候选人"的场景），下面就靠这个字段拿到候选人数据，而不是从 messages
-    # 里现读（旧轮次可能已经被 compress_node 从滑动窗口中移除了）。
+
+
+
+
     last_search_result_json = state.get("last_search_result_json")
 
-    # 只有 update_job_requirements 实际执行过才会被赋值，见下方对应分支；
-    # 非 None 时才在最后的返回里带上 jd_info 更新，其余场景完全不碰这个字段。
-    jd_info_update: JDInfo | None = None
 
-    # 这一轮更早的时候是否已经调用过 update_job_requirements——决定
-    # score_candidates_batch 要不要清空旧的 candidate_map/match_map 做"全量
-    # 替换"（见下方 score_candidates_batch 分支）。注意"清空"这个动作故意
-    # 放在这里、而不是 update_job_requirements 执行的那一刻：如果提前清空，
-    # 一旦 Agent 调用完 update_job_requirements 后没有按预期继续走
-    # search_candidates + score_candidates_batch，candidates/match_results
-    # 会以"已清空但没有重新填充"收场，前端会看到空列表。
+
+    admission_criteria_update: AdmissionCriteria | None = None
+
+
+
+
+
+
+
+
     requirements_updated_earlier = _tool_called_earlier_in_round(
-        state["messages"], "update_job_requirements"
+        state["messages"], "update_admission_criteria"
     )
 
     for tool_call in last_message.tool_calls:
@@ -1114,92 +1114,92 @@ def tool_executor_node(state: AgentState) -> dict:
         print(f"⚙️  调用工具：{name}")
         t0 = time.monotonic()
 
-        if name == "score_candidates_batch":
-            # candidates_json/jd_json 按 Prompt 要求，LLM 应该都留空字符串——
-            # 这里不管它实际填了什么，都用 state 里存的真实检索结果、以及已解析
-            # 的 jd_info 覆盖掉，保证正确性，同时（配合 Prompt 里"留空即可"的
-            # 说明）让 LLM 不需要为了传参把几千字的候选人 JSON 重新生成一遍，
-            # 省掉这部分纯抄写的耗时。
+        if name == "score_students_batch":
+
+
+
+
+
             args = dict(tool_call["args"])
             if last_search_result_json is not None:
-                args["candidates_json"] = last_search_result_json
-            jd_info_for_scoring = state.get("jd_info")
-            if jd_info_for_scoring is not None:
-                args["jd_json"] = jd_info_for_scoring.model_dump_json(ensure_ascii=False)
+                args["students_json"] = last_search_result_json
+            admission_criteria_for_scoring = state.get("admission_criteria")
+            if admission_criteria_for_scoring is not None:
+                args["admission_criteria_json"] = admission_criteria_for_scoring.model_dump_json(ensure_ascii=False)
             if requirements_updated_earlier:
-                # 岗位标准这一轮被更新过——旧的候选人/打分结果是拿旧标准算出来
-                # 的，不再适用。这里才是真正"用新数据全量替换"的时刻：清空后
-                # 由下面的循环用这批新打分结果重新填充，不与旧结果合并。
-                candidate_map.clear()
+
+
+
+                student_map.clear()
                 match_map.clear()
                 key_to_name.clear()
             raw = TOOLS_BY_NAME[name].invoke(args)
             parsed = json.loads(raw)
             trimmed = []
             for item in parsed:
-                candidate = CandidateInfo.model_validate(item["candidate"])
+                student = StudentProfile.model_validate(item["student"])
                 match_result = MatchResult.model_validate(item["match_result"])
-                candidate_key = _candidate_key(candidate)
+                student_key = _student_key(student)
 
-                existing_name = key_to_name.get(candidate_key)
+                existing_name = key_to_name.get(student_key)
                 if existing_name is not None and existing_name in match_map:
-                    # 同一位候选人被重新打分（多轮反馈场景）：沿用旧展示名，直接
-                    # 覆盖旧条目，不当成新人跑一遍姓名去重逻辑。
-                    match_result.candidate_name = existing_name
-                    candidate.name = existing_name
-                else:
-                    unique_name = _dedupe_display_name(match_result.candidate_name, set(match_map))
-                    if unique_name != match_result.candidate_name:
-                        match_result.candidate_name = unique_name
-                        candidate.name = unique_name
 
-                candidate_map[candidate_key] = candidate
-                match_map[match_result.candidate_name] = match_result
-                key_to_name[candidate_key] = match_result.candidate_name
+
+                    match_result.student_name = existing_name
+                    student.name = existing_name
+                else:
+                    unique_name = _dedupe_display_name(match_result.student_name, set(match_map))
+                    if unique_name != match_result.student_name:
+                        match_result.student_name = unique_name
+                        student.name = unique_name
+
+                student_map[student_key] = student
+                match_map[match_result.student_name] = match_result
+                key_to_name[student_key] = match_result.student_name
                 trimmed.append({
-                    "candidate_name": match_result.candidate_name,
+                    "student_name": match_result.student_name,
                     "match_score": match_result.match_score,
                     "matched_skills": match_result.matched_skills,
                     "missing_skills": match_result.missing_skills,
                     "should_proceed": match_result.should_proceed,
                 })
             content = json.dumps(trimmed, ensure_ascii=False)
-        elif name == "search_candidates":
-            # top_k 是 HR 在表单里填的硬性召回数量，不能让 LLM 自由决定要不要
-            # 遵守 Prompt 里的"建议"——这里直接用会话状态里的值覆盖 LLM 传来的
-            # 参数，保证"填了 10 就一定召回 10 个"。
+        elif name == "search_students":
+
+
+
             args = dict(tool_call["args"])
             args["top_k"] = _state_top_k(state)
             args["owner_user_id"] = state["owner_user_id"]
             raw_search_result = TOOLS_BY_NAME[name].invoke(args)
-            last_search_result_json, candidate_count = _validate_search_result(
+            last_search_result_json, student_count = _validate_search_result(
                 raw_search_result
             )
-            # 真实候选人 JSON 只保存在结构化 State 中，绝不进入决策 Agent 的
-            # ToolMessage。这样候选人可控的简历文本既不会污染上下文，也不能
-            # 通过提示注入影响顶层 Agent 的工具路由。
+
+
+
             content = json.dumps({
                 "status": "ok",
-                "tool": "search_candidates",
-                "candidate_count": candidate_count,
-                "next_action": "call score_candidates_batch",
+                "tool": "search_students",
+                "student_count": student_count,
+                "next_action": "call score_students_batch",
             }, ensure_ascii=False, separators=(",", ":"))
-        elif name == "update_job_requirements":
-            # jd_json/feedback_text 按 Prompt 要求由 LLM 留空——这里用当前会话
-            # 真实的 jd_info 和这一轮 HR 的原始反馈文本覆盖，不依赖 LLM 复述
-            # （避免转述失真，也省去它把整段 JD/反馈重新生成一遍的耗时）。
-            # 注意：这个分支只更新 jd_info，不清空 candidates/match_results——
-            # 清空的时机在上面 score_candidates_batch 分支，理由见函数顶部注释。
+        elif name == "update_admission_criteria":
+
+
+
+
+
             args = dict(tool_call["args"])
-            current_jd = state.get("jd_info")
-            args["jd_json"] = current_jd.model_dump_json(ensure_ascii=False) if current_jd else ""
+            current_admission_criteria = state.get("admission_criteria")
+            args["admission_criteria_json"] = current_admission_criteria.model_dump_json(ensure_ascii=False) if current_admission_criteria else ""
             args["feedback_text"] = _latest_feedback_text(state["messages"])
             content = TOOLS_BY_NAME[name].invoke(args)
             try:
-                jd_info_update = JDUpdateResult.model_validate_json(content).jd_info
-            except Exception as exc:  # noqa: BLE001
-                logger.warning("解析 update_job_requirements 结果失败，岗位信息保持不变: %s", exc)
-                jd_info_update = current_jd
+                admission_criteria_update = AdmissionCriteriaUpdateResult.model_validate_json(content).admission_criteria
+            except Exception as exc:
+                logger.warning("解析 update_admission_criteria 结果失败，招生信息保持不变: %s", exc)
+                admission_criteria_update = current_admission_criteria
         else:
             content = TOOLS_BY_NAME[name].invoke(tool_call["args"])
 
@@ -1209,10 +1209,10 @@ def tool_executor_node(state: AgentState) -> dict:
     sorted_matches = sorted(match_map.values(), key=lambda item: item.match_score, reverse=True)
     result = {
         "messages": tool_messages,
-        "candidates": list(candidate_map.values()),
+        "students": list(student_map.values()),
         "match_results": sorted_matches,
         "last_search_result_json": last_search_result_json,
     }
-    if jd_info_update is not None:
-        result["jd_info"] = jd_info_update
+    if admission_criteria_update is not None:
+        result["admission_criteria"] = admission_criteria_update
     return result

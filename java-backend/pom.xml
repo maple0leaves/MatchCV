@@ -11,11 +11,11 @@
         <relativePath/>
     </parent>
 
-    <groupId>com.agentrecruit</groupId>
-    <artifactId>agent-recruit-backend</artifactId>
+    <groupId>com.studentadmission</groupId>
+    <artifactId>student-admission-backend</artifactId>
     <version>1.0.0</version>
-    <name>agent-recruit-backend</name>
-    <description>Java business backend for the agent-recruit AI recruitment system</description>
+    <name>student-admission-backend</name>
+    <description>Java business backend for the student-admission screening system</description>
 
     <properties>
         <java.version>17</java.version>
@@ -96,7 +96,7 @@
             <version>${knife4j.version}</version>
         </dependency>
 
-        <!-- 简历解析：仅支持 PDF -->
+
         <dependency>
             <groupId>org.apache.pdfbox</groupId>
             <artifactId>pdfbox</artifactId>

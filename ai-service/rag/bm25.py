@@ -20,15 +20,15 @@ from collections import Counter
 
 import jieba
 
-# BM25 标准参数（Robertson/Sparck Jones 原始论文及后续实践中最常用的默认值）：
-# k1 控制词频饱和速度（越大，词频的边际收益衰减越慢）；
-# b 控制文档长度归一化强度（0 表示完全不考虑长度，1 表示完全按长度线性折算）。
+
+
+
 _BM25_K1 = 1.5
 _BM25_B = 0.75
 
-# 英文单词/技术符号（Java、C++、3年、Spring Boot 里的 "Boot"）按原样整体匹配；
-# 其余（中文）片段单独交给 jieba 分词，避免 jieba 把中英混排文本切碎、
-# 也避免技术词汇被中文分词器拆散成无意义的字。
+
+
+
 _LATIN_TOKEN_RE = re.compile(r"[a-zA-Z0-9+#._-]+")
 
 
@@ -61,7 +61,7 @@ class BM25Index:
     还需要一套"多个 chunk 分数聚合成候选人分数"的额外逻辑，且语义检索那侧
     （``PgVectorResumeStore.similarity_search``）已经是直接按候选人去重返回的。
     这里在构建索引前，直接把同一候选人的所有 chunk 拼接成一份完整文本
-    （见 ``rag/vector_store.py::load_candidate_corpus``），两侧检索粒度对齐，
+    （见 ``rag/vector_store.py::load_student_corpus``），两侧检索粒度对齐，
     融合时不需要再处理"候选人 vs chunk"的映射关系。
     """
 

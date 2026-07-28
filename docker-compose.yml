@@ -160,9 +160,9 @@ services:
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173,http://localhost:8080}
       APP_ROCKETMQ_ENABLED: ${APP_ROCKETMQ_ENABLED:-true}
       ROCKETMQ_NAME_SERVER: namesrv:9876
-      ROCKETMQ_PRODUCER_GROUP: agent-recruit-producer
-      ROCKETMQ_RESUME_PARSE_TOPIC: agent-recruit-resume-parse
-      ROCKETMQ_RESUME_PARSE_CONSUMER_GROUP: agent-recruit-resume-parse-consumer
+      ROCKETMQ_PRODUCER_GROUP: student-admission-producer
+      ROCKETMQ_RESUME_PARSE_TOPIC: student-admission-resume-parse
+      ROCKETMQ_RESUME_PARSE_CONSUMER_GROUP: student-admission-resume-parse-consumer
       ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin123}
     healthcheck:

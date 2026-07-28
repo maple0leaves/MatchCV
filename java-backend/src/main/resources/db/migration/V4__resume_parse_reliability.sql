@@ -1,4 +1,4 @@
--- Candidate concurrency control and durable resume-parse task/outbox.
+
 
 ALTER TABLE candidates
     ADD COLUMN version INT NOT NULL DEFAULT 0 AFTER owner_user_id,

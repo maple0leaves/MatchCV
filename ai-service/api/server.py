@@ -1,7 +1,7 @@
-"""FastAPI server exposing the recruitment agent as REST endpoints.
+"""FastAPI server exposing the admission agent as REST endpoints.
 
-Python 服务只做 AI 能力（简历解析 / 候选人向量索引 / 岗位匹配），业务数据
-（用户、候选人、简历文件）全部归口 Java 后端 + MySQL，本服务不直连数据库。
+Python 服务只做 AI 能力（简历解析 / 学生向量索引 / 招生匹配），业务数据
+（用户、学生、简历文件）全部归口 Java 后端 + MySQL，本服务不直连数据库。
 """
 
 import asyncio
@@ -13,11 +13,11 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
-# 之前只在各模块里写了 logging.getLogger(__name__).info(...)（工具调用耗时、
-# RAG 检索次数等），但从来没有配置任何 handler——root logger 没有 handler 时，
-# Python 会用只处理 WARNING 及以上级别的 lastResort handler，INFO 级别的日志
-# 全部被默默吞掉，Docker 日志里一条都看不到。这是这次排查"匹配请求为什么慢"
-# 时才发现的真实观测性缺口：不是没打日志，是打了但从来没人能看到。
+
+
+
+
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)s %(name)s: %(message)s",
@@ -36,7 +36,7 @@ from config import (
     INTERNAL_SERVICE_TOKEN,
     OCR_FALLBACK_MODELS,
     OCR_TIMEOUT_SECONDS,
-    RECRUIT_REQUEST_TIMEOUT_SECONDS,
+    ADMISSION_REQUEST_TIMEOUT_SECONDS,
 )
 from backend.api.deps import get_current_user
 
@@ -47,16 +47,16 @@ from agent.agent import (
     _round_start_index,
     _tool_name_for_call_id,
 )
-from agent.candidate_chat import answer_candidate_question
+from agent.student_chat import answer_student_question
 from agent.schemas import (
-    CandidateChatRequest,
-    CandidateChatResponse,
-    CandidateInfo,
-    JDInfo,
-    JDUpdateResult,
+    StudentChatRequest,
+    StudentChatResponse,
+    StudentProfile,
+    AdmissionCriteria,
+    AdmissionCriteriaUpdateResult,
     MatchResult,
-    RecruitmentInput,
-    RecruitmentOutput,
+    AdmissionInput,
+    AdmissionOutput,
 )
 from main import (
     AgentLoopLimitError,
@@ -79,7 +79,7 @@ async def _lifespan(_app: FastAPI):
     from config import validate_production_config
 
     validate_production_config()
-    # 启动时清理过期会话，避免 checkpoints.db 随历史会话数量无限增长。
+
     try:
         await asyncio.to_thread(cleanup_expired_sessions)
     except Exception:
@@ -118,13 +118,13 @@ def _extract_adjustment_note(result: dict) -> Optional[str]:
     """从这一轮（最近一条 HumanMessage 之后）的消息历史里，判断"调整结果"抽屉
     要不要展示说明、展示什么。
 
-    - 这一轮完全没有调用 update_job_requirements（纯问答/换方向分支）→ None，
+    - 这一轮完全没有调用 update_admission_criteria（纯问答/换方向分支）→ None，
       抽屉不展示任何说明，跟改造前行为一致。
-    - 调用过 update_job_requirements，也调用过 score_candidates_batch（预期
+    - 调用过 update_admission_criteria，也调用过 score_students_batch（预期
       的完整三步流程走完了）→ 返回 LLM 写的 change_summary。
-    - 调用过 update_job_requirements，但没有调用 score_candidates_batch
+    - 调用过 update_admission_criteria，但没有调用 score_students_batch
       （Agent 没有按预期把三步走完）→ 返回一句提示：当前仍是调整前的旧结果，
-      因为 agent.py::tool_executor_node 把"清空旧数据"推迟到 score_candidates_batch
+      因为 agent.py::tool_executor_node 把"清空旧数据"推迟到 score_students_batch
       真正执行时才做，因此这里展示的提示对应当前结果状态。
     """
     messages = result.get("messages", [])
@@ -137,13 +137,13 @@ def _extract_adjustment_note(result: dict) -> Optional[str]:
         if not isinstance(message, ToolMessage):
             continue
         tool_name = _tool_name_for_call_id(round_messages, message.tool_call_id)
-        if tool_name == "update_job_requirements":
+        if tool_name == "update_admission_criteria":
             requirements_updated = True
             try:
-                change_summary = JDUpdateResult.model_validate_json(message.content).change_summary
-            except Exception:  # noqa: BLE001
+                change_summary = AdmissionCriteriaUpdateResult.model_validate_json(message.content).change_summary
+            except Exception:
                 change_summary = ""
-        elif tool_name == "score_candidates_batch":
+        elif tool_name == "score_students_batch":
             rescored = True
 
     if not requirements_updated:
@@ -214,9 +214,9 @@ class InternalOcrResumeRequest(BaseModel):
     image_ext: str = Field(default="png", description="图片格式后缀，如 png/jpg/jpeg")
 
 
-class InternalIndexCandidateRequest(BaseModel):
+class InternalIndexStudentRequest(BaseModel):
     owner_user_id: int = Field(ge=1)
-    candidate_id: Optional[int] = None
+    student_id: Optional[int] = None
     name: str = ""
     email: str = ""
     skills: list[str] | str = Field(default_factory=list)
@@ -226,16 +226,16 @@ class InternalIndexCandidateRequest(BaseModel):
     source: str = ""
 
 
-class CandidateOwnershipMapping(BaseModel):
+class StudentOwnershipMapping(BaseModel):
     owner_user_id: int = Field(ge=1)
     source: str = Field(min_length=1)
 
 
 class InternalOwnershipSyncRequest(BaseModel):
-    candidates: list[CandidateOwnershipMapping] = Field(default_factory=list)
+    students: list[StudentOwnershipMapping] = Field(default_factory=list)
 
 
-def _local_parse_resume_text(resume_text: str) -> CandidateInfo:
+def _local_parse_resume_text(resume_text: str) -> StudentProfile:
     """Extract enough structured fields to keep uploaded resumes usable."""
     import re
 
@@ -272,7 +272,7 @@ def _local_parse_resume_text(resume_text: str) -> CandidateInfo:
             break
 
     summary = " ".join(lines[:8])
-    return CandidateInfo(
+    return StudentProfile(
         name=name,
         email=email_match.group(0) if email_match else "",
         skills=skills,
@@ -286,8 +286,8 @@ def _is_placeholder_text(value: str | None) -> bool:
         return True
     normalized = value.strip().lower()
     return normalized in {
-        "candidate",
-        "candidate name",
+        "student",
+        "student name",
         "unknown",
         "not specified",
         "not specified in input",
@@ -307,22 +307,22 @@ def _is_garbled_text(value: str | None) -> bool:
     import re as _re
     if not value:
         return False
-    # 西里尔字母（俄语/乌克兰语等）
+
     if _re.search(r"[\u0400-\u04FF]", value):
         return True
-    # LaTeX 命令（如 \alpha、\begin{tabular}）
+
     if _re.search(r"\\[a-zA-Z]{2,}", value):
         return True
-    # 阿拉伯字母
+
     if _re.search(r"[\u0600-\u06FF]", value):
         return True
-    # 希伯来字母
+
     if _re.search(r"[\u0590-\u05FF]", value):
         return True
     return False
 
 
-def _format_candidate_index_text(request: InternalIndexCandidateRequest) -> str:
+def _format_student_index_text(request: InternalIndexStudentRequest) -> str:
     skills = request.skills
     if isinstance(skills, list):
         skills_text = ", ".join(str(item).strip() for item in skills if str(item).strip())
@@ -359,10 +359,10 @@ async def internal_parse_resume(
             timeout=UPLOAD_PARSE_AI_TIMEOUT_SECONDS,
         )
         payload = json.loads(raw) if isinstance(raw, str) else raw
-        parsed = CandidateInfo.model_validate(payload)
-        # 兜底模型（DeepSeek-V4-Flash 等）使用 json_mode 时偶尔对 name/summary
-        # 等字段产生幻觉（俄文/LaTeX/阿拉伯字母混入），_is_garbled_text 统一
-        # 检测，一旦发现乱码直接用本地规则解析结果替换，避免垃圾数据写入数据库。
+        parsed = StudentProfile.model_validate(payload)
+
+
+
         garbled_fields = []
         if _is_placeholder_text(parsed.name) or _is_garbled_text(parsed.name):
             if local_result.name:
@@ -421,8 +421,8 @@ async def internal_ocr_resume(
     try:
         from ocr.resume_ocr import extract_text_from_image
 
-        # extract_text_from_image 内部会按顺序试 1 个首选 + N 个候选模型，外层超时
-        # 要给够所有模型都试一遍的时间，否则会在还没轮到候选模型时就被这里提前掐断。
+
+
         model_count = 1 + len(OCR_FALLBACK_MODELS)
         text = await asyncio.wait_for(
             asyncio.to_thread(extract_text_from_image, image_bytes, request.image_ext),
@@ -434,17 +434,17 @@ async def internal_ocr_resume(
         raise HTTPException(status_code=503, detail=_friendly_ai_error(exc))
 
 
-class InternalDeleteCandidateRequest(BaseModel):
+class InternalDeleteStudentRequest(BaseModel):
     owner_user_id: int = Field(ge=1)
     source: str = Field(min_length=1)
 
 
-@app.delete("/api/internal/delete-candidate")
-async def internal_delete_candidate(
-    request: InternalDeleteCandidateRequest,
+@app.delete("/api/internal/delete-student")
+async def internal_delete_student(
+    request: InternalDeleteStudentRequest,
     _internal: None = Depends(require_internal_service),
 ):
-    """Internal Java-backend endpoint for removing a candidate's vectors from pgvector."""
+    """Internal Java-backend endpoint for removing a student's vectors from pgvector."""
     source = request.source.strip()
     if not source:
         raise HTTPException(status_code=400, detail="source 不能为空")
@@ -457,22 +457,22 @@ async def internal_delete_candidate(
         )
         return {"deleted": True, "rows": deleted, "source": source}
     except Exception as exc:
-        logger.exception("Failed to delete candidate vectors from pgvector: %s", exc)
-        raise HTTPException(status_code=500, detail="从向量库删除候选人失败")
+        logger.exception("Failed to delete student vectors from pgvector: %s", exc)
+        raise HTTPException(status_code=500, detail="从向量库删除学生失败")
 
 
-@app.post("/api/internal/index-candidate")
-async def internal_index_candidate(
-    request: InternalIndexCandidateRequest,
+@app.post("/api/internal/index-student")
+async def internal_index_student(
+    request: InternalIndexStudentRequest,
     _internal: None = Depends(require_internal_service),
 ):
-    """Internal Java-backend endpoint for syncing parsed candidates into pgvector."""
-    index_text = _format_candidate_index_text(request)
+    """Internal Java-backend endpoint for syncing parsed students into pgvector."""
+    index_text = _format_student_index_text(request)
     if not index_text.strip():
-        raise HTTPException(status_code=400, detail="候选人简历文本不能为空")
+        raise HTTPException(status_code=400, detail="学生简历文本不能为空")
 
-    name = request.name.strip() or f"候选人{request.candidate_id or ''}".strip() or "候选人"
-    source = request.source.strip() or (f"candidate:{request.candidate_id}" if request.candidate_id else name)
+    name = request.name.strip() or f"学生{request.student_id or ''}".strip() or "学生"
+    source = request.source.strip() or (f"student:{request.student_id}" if request.student_id else name)
 
     try:
         from rag.vector_store import upsert_resume_document
@@ -486,8 +486,8 @@ async def internal_index_candidate(
         )
         return {"indexed": True, "chunks": chunks, "source": source}
     except Exception as exc:
-        logger.exception("Failed to sync candidate to pgvector: %s", exc)
-        raise HTTPException(status_code=500, detail="同步候选人到向量库失败")
+        logger.exception("Failed to sync student to pgvector: %s", exc)
+        raise HTTPException(status_code=500, detail="同步学生到向量库失败")
 
 
 @app.post("/api/internal/sync-vector-ownership")
@@ -500,15 +500,15 @@ async def internal_sync_vector_ownership(
 
     mappings = [
         (item.owner_user_id, item.source.strip())
-        for item in request.candidates
+        for item in request.students
         if item.source.strip()
     ]
     updated = await asyncio.to_thread(sync_vector_ownership, mappings)
-    return {"updated_rows": updated, "candidate_count": len(mappings)}
+    return {"updated_rows": updated, "student_count": len(mappings)}
 
 
-@app.post("/api/recruit", response_model=RecruitmentOutput)
-async def recruit(request: RecruitmentInput, _user: dict = Depends(get_current_user)):
+@app.post("/api/admission", response_model=AdmissionOutput)
+async def admission(request: AdmissionInput, _user: dict = Depends(get_current_user)):
     """Start a new matching session: 招收方向+期望条件 → 学生匹配结果 + session_id。"""
     session_id = uuid4().hex
     try:
@@ -520,34 +520,34 @@ async def recruit(request: RecruitmentInput, _user: dict = Depends(get_current_u
                 request.top_k,
                 _current_user_id(_user),
             ),
-            timeout=RECRUIT_REQUEST_TIMEOUT_SECONDS,
+            timeout=ADMISSION_REQUEST_TIMEOUT_SECONDS,
         )
-        return RecruitmentOutput(
+        return AdmissionOutput(
             session_id=session_id,
             match_results=_parse_match_results(result.get("match_results", [])),
         )
     except asyncio.TimeoutError:
-        # 兜底总时限：不管具体卡在 LLM 重试、embedding 还是别的环节，超时就直接
-        # 失败返回，避免请求无限期悬着。
-        logger.warning("recruit timed out after %ss, session_id=%s", RECRUIT_REQUEST_TIMEOUT_SECONDS, session_id)
+
+
+        logger.warning("admission timed out after %ss, session_id=%s", ADMISSION_REQUEST_TIMEOUT_SECONDS, session_id)
         raise HTTPException(status_code=504, detail="匹配超时，请稍后重试")
     except AgentLoopLimitError:
-        logger.warning("recruit agent loop limit reached, session_id=%s", session_id)
+        logger.warning("admission agent loop limit reached, session_id=%s", session_id)
         raise HTTPException(status_code=503, detail="匹配执行步骤过多，请简化期望条件后重试")
     except AgentWorkflowIncompleteError:
-        logger.warning("recruit agent workflow incomplete, session_id=%s", session_id)
+        logger.warning("admission agent workflow incomplete, session_id=%s", session_id)
         raise HTTPException(status_code=503, detail="匹配流程未完整执行，请重试")
     except Exception as e:
         raise HTTPException(status_code=503, detail=_friendly_ai_error(e))
 
 
-class RecruitmentRefineRequest(BaseModel):
+class AdmissionRefineRequest(BaseModel):
     session_id: str = Field(min_length=1)
     message: str = Field(min_length=1)
 
 
-@app.post("/api/recruit/refine", response_model=RecruitmentOutput)
-async def recruit_refine(request: RecruitmentRefineRequest, _user: dict = Depends(get_current_user)):
+@app.post("/api/admission/refine", response_model=AdmissionOutput)
+async def admission_refine(request: AdmissionRefineRequest, _user: dict = Depends(get_current_user)):
     """Continue an existing session with user feedback, or answer a prior clarification request."""
     try:
         result = await asyncio.wait_for(
@@ -557,47 +557,47 @@ async def recruit_refine(request: RecruitmentRefineRequest, _user: dict = Depend
                 request.message,
                 _current_user_id(_user),
             ),
-            timeout=RECRUIT_REQUEST_TIMEOUT_SECONDS,
+            timeout=ADMISSION_REQUEST_TIMEOUT_SECONDS,
         )
-        return RecruitmentOutput(
+        return AdmissionOutput(
             session_id=request.session_id,
             match_results=_parse_match_results(result.get("match_results", [])),
             adjustment_note=_extract_adjustment_note(result),
         )
     except asyncio.TimeoutError:
-        logger.warning("recruit/refine timed out after %ss, session_id=%s", RECRUIT_REQUEST_TIMEOUT_SECONDS, request.session_id)
+        logger.warning("admission/refine timed out after %ss, session_id=%s", ADMISSION_REQUEST_TIMEOUT_SECONDS, request.session_id)
         raise HTTPException(status_code=504, detail="匹配超时，请稍后重试")
     except AgentLoopLimitError:
-        logger.warning("recruit/refine agent loop limit reached, session_id=%s", request.session_id)
+        logger.warning("admission/refine agent loop limit reached, session_id=%s", request.session_id)
         raise HTTPException(status_code=503, detail="本次调整执行步骤过多，请简化反馈后重试")
     except AgentWorkflowIncompleteError:
-        logger.warning("recruit/refine agent workflow incomplete, session_id=%s", request.session_id)
+        logger.warning("admission/refine agent workflow incomplete, session_id=%s", request.session_id)
         raise HTTPException(status_code=503, detail="本次调整流程未完整执行，请重试")
     except SessionNotFoundError:
         raise HTTPException(status_code=404, detail="会话不存在或已失效，请重新发起匹配")
     except SessionAccessDeniedError:
-        # 与不存在统一返回 404，避免通过 session_id 探测其他用户的数据。
+
         raise HTTPException(status_code=404, detail="会话不存在或已失效，请重新发起匹配")
     except Exception as e:
         raise HTTPException(status_code=503, detail=_friendly_ai_error(e))
 
 
-@app.post("/api/recruit/candidate-chat", response_model=CandidateChatResponse)
-async def candidate_chat(
-    request: CandidateChatRequest,
+@app.post("/api/admission/student-chat", response_model=StudentChatResponse)
+async def student_chat(
+    request: StudentChatRequest,
     _user: dict = Depends(get_current_user),
 ):
-    """Answer a read-only question about one authoritative candidate in one owned session."""
+    """Answer a read-only question about one authoritative student in one owned session."""
     try:
         state = await asyncio.to_thread(
             get_session_snapshot,
             request.session_id,
             _current_user_id(_user),
         )
-        jd_value = state.get("jd_info")
-        if not jd_value:
+        admission_criteria_value = state.get("admission_criteria")
+        if not admission_criteria_value:
             raise HTTPException(status_code=409, detail="当前会话还没有可用的招收信息")
-        jd_info = jd_value if isinstance(jd_value, JDInfo) else JDInfo(**jd_value)
+        admission_criteria = admission_criteria_value if isinstance(admission_criteria_value, AdmissionCriteria) else AdmissionCriteria(**admission_criteria_value)
 
         match_result = next(
             (
@@ -612,29 +612,29 @@ async def candidate_chat(
 
         answer = await asyncio.wait_for(
             asyncio.to_thread(
-                answer_candidate_question,
-                jd_info,
+                answer_student_question,
+                admission_criteria,
                 match_result,
                 request.history,
                 request.message,
             ),
-            timeout=RECRUIT_REQUEST_TIMEOUT_SECONDS,
+            timeout=ADMISSION_REQUEST_TIMEOUT_SECONDS,
         )
-        return CandidateChatResponse(answer=answer)
+        return StudentChatResponse(answer=answer)
     except asyncio.TimeoutError:
         logger.warning(
-            "candidate chat timed out after %ss, session_id=%s",
-            RECRUIT_REQUEST_TIMEOUT_SECONDS,
+            "student chat timed out after %ss, session_id=%s",
+            ADMISSION_REQUEST_TIMEOUT_SECONDS,
             request.session_id,
         )
         raise HTTPException(status_code=504, detail="学生分析超时，请稍后重试")
     except (SessionNotFoundError, SessionAccessDeniedError):
-        # 与续聊接口一致，避免通过 session_id 探测其他用户的会话。
+
         raise HTTPException(status_code=404, detail="会话不存在或已失效，请重新发起匹配")
     except HTTPException:
         raise
     except Exception as exc:
-        logger.exception("candidate chat failed, session_id=%s", request.session_id)
+        logger.exception("student chat failed, session_id=%s", request.session_id)
         raise HTTPException(status_code=503, detail="学生分析暂时不可用，请稍后重试") from exc
 
 

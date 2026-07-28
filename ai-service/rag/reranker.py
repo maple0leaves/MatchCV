@@ -1,4 +1,4 @@
-"""API-based reranking for the recruitment RAG pipeline.
+"""API-based reranking for the admission RAG pipeline.
 
 Calls a Cohere-compatible rerank endpoint (supported by Cohere, Jina AI,
 aihubmix, and most API aggregators). Falls back to score-order truncation

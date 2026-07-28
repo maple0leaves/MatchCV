@@ -29,13 +29,13 @@ def _fake_openai_response(text: str):
 def test_extract_text_from_image_returns_recognized_text():
     with patch("ocr.resume_ocr.OpenAI") as mock_openai_cls:
         mock_client = MagicMock()
-        mock_client.chat.completions.create.return_value = _fake_openai_response("张三\nPython 工程师\n5年经验")
+        mock_client.chat.completions.create.return_value = _fake_openai_response("张三\n具备 Python 基础的硕士生\n5年经验")
         mock_openai_cls.return_value = mock_client
 
         text = extract_text_from_image(b"fake-png-bytes", "png")
 
-        assert text == "张三\nPython 工程师\n5年经验"
-        # 图片按 base64 data URI 传给模型，且用了配置里的 OCR_MODEL。
+        assert text == "张三\n具备 Python 基础的硕士生\n5年经验"
+
         call_kwargs = mock_client.chat.completions.create.call_args.kwargs
         assert call_kwargs["model"] == config.OCR_MODEL
         image_url = call_kwargs["messages"][0]["content"][0]["image_url"]["url"]
@@ -76,7 +76,7 @@ def test_extract_text_from_image_falls_back_to_next_model_when_primary_errors():
         assert second_model == config.OCR_FALLBACK_MODELS[0]
 
 
-def test_extract_text_from_image_raises_when_every_candidate_model_errors():
+def test_extract_text_from_image_raises_when_every_student_model_errors():
     """首选和所有候选模型全部报错时，最终异常信息里带上尝试过的模型数量。"""
     with patch("ocr.resume_ocr.OpenAI") as mock_openai_cls:
         mock_client = MagicMock()
@@ -107,8 +107,8 @@ def _make_test_client() -> TestClient:
     return TestClient(app)
 
 
-# /api/internal/* 现在都要求 X-Internal-Token（见 server.py::require_internal_service），
-# 防止 Java-to-Python 内部接口被直接从公网调用。测试里带上配置里的（默认）token。
+
+
 _INTERNAL_HEADERS = {"X-Internal-Token": config.INTERNAL_SERVICE_TOKEN}
 
 

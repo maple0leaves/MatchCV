@@ -23,14 +23,14 @@ import {
   UserRound,
   X,
 } from "lucide-react";
-import { ApiError, authApi, candidateApi, getStoredUser, matchApi } from "./api/client";
-import { CandidateChatPanel } from "./components/CandidateChatPanel";
-import { defaultJobDescription } from "./data";
+import { ApiError, authApi, studentApi, getStoredUser, admissionApi } from "./api/client";
+import { StudentChatPanel } from "./components/StudentChatPanel";
+import { defaultAdmissionCriteria } from "./data";
 import type {
   AuthUser,
   CaptchaChallenge,
-  CandidateChatMessage,
-  LibraryResume,
+  StudentChatMessage,
+  StudentResume,
   MatchResult,
   ParseStatus,
 } from "./types";
@@ -47,7 +47,7 @@ const PARSE_STATUS_LABEL: Record<ParseStatus, string> = {
   failed: "解析失败",
 };
 
-function resumeDisplayName(resume: LibraryResume) {
+function resumeDisplayName(resume: StudentResume) {
   if (resume.name && resume.name.trim()) return resume.name;
   const base = resume.resume_file_path?.split(/[\\/]/).pop() ?? "";
   return base.replace(/\.[^.]+$/, "") || `简历 #${resume.id}`;
@@ -64,11 +64,11 @@ function isParseInProgress(status: ParseStatus) {
 
 export default function App() {
   const [view, setView] = useState<AppView>("match");
-  const [jobTitle, setJobTitle] = useState("多模态大模型方向硕士");
-  const [jobDescription, setJobDescription] = useState(defaultJobDescription);
+  const [admissionDirection, setAdmissionDirection] = useState("多模态大模型方向硕士");
+  const [admissionCriteria, setAdmissionCriteria] = useState(defaultAdmissionCriteria);
   const [resultLimit, setResultLimit] = useState<number>(5);
 
-  const [libraryResumes, setLibraryResumes] = useState<LibraryResume[]>([]);
+  const [libraryResumes, setStudentResumes] = useState<StudentResume[]>([]);
   const [libraryLoading, setLibraryLoading] = useState(false);
   const [libraryQuery, setLibraryQuery] = useState("");
   const [isUploading, setIsUploading] = useState(false);
@@ -83,11 +83,11 @@ export default function App() {
   const [isRefining, setIsRefining] = useState(false);
   const [adjustDrawerOpen, setAdjustDrawerOpen] = useState(false);
   const [adjustmentNote, setAdjustmentNote] = useState<string | null>(null);
-  const [activeCandidate, setActiveCandidate] = useState<MatchResult | null>(null);
-  const [candidateChats, setCandidateChats] = useState<Record<string, CandidateChatMessage[]>>({});
-  const [candidateChatPendingKey, setCandidateChatPendingKey] = useState<string | null>(null);
-  const [candidateChatErrors, setCandidateChatErrors] = useState<Record<string, string>>({});
-  const [activeResume, setActiveResume] = useState<LibraryResume | null>(null);
+  const [activeStudent, setActiveStudent] = useState<MatchResult | null>(null);
+  const [studentChats, setStudentChats] = useState<Record<string, StudentChatMessage[]>>({});
+  const [studentChatPendingKey, setStudentChatPendingKey] = useState<string | null>(null);
+  const [studentChatErrors, setStudentChatErrors] = useState<Record<string, string>>({});
+  const [activeResume, setActiveResume] = useState<StudentResume | null>(null);
   const [isOpeningResumeFile, setIsOpeningResumeFile] = useState(false);
   const [isReparsing, setIsReparsing] = useState(false);
   const [pdfPreview, setPdfPreview] = useState<{ url: string; title: string } | null>(null);
@@ -110,7 +110,7 @@ export default function App() {
   const [isDragOver, setIsDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
-  const candidateDrawerBodyRef = useRef<HTMLDivElement>(null);
+  const studentDrawerBodyRef = useRef<HTMLDivElement>(null);
   const resumeCloseRef = useRef<HTMLButtonElement>(null);
   const authCloseRef = useRef<HTMLButtonElement>(null);
   const adjustCloseRef = useRef<HTMLButtonElement>(null);
@@ -123,11 +123,11 @@ export default function App() {
   const isMatchSubmitting = isCheckingLibrary || isAnalyzing;
   const hasResults = phase === "done";
   const resumePoolCount = libraryResumes.length;
-  const activeCandidateChatKey = sessionId && activeCandidate?.resume_source
-    ? `${sessionId}:${activeCandidate.resume_source}`
+  const activeStudentChatKey = sessionId && activeStudent?.resume_source
+    ? `${sessionId}:${activeStudent.resume_source}`
     : "";
-  const activeCandidateChatMessages = activeCandidateChatKey
-    ? candidateChats[activeCandidateChatKey] ?? []
+  const activeStudentChatMessages = activeStudentChatKey
+    ? studentChats[activeStudentChatKey] ?? []
     : [];
 
   const showToast = useCallback((message: string) => {
@@ -161,8 +161,8 @@ export default function App() {
   const loadLibrary = useCallback(async (keyword?: string) => {
     setLibraryLoading(true);
     try {
-      const data = await candidateApi.list({ page: 1, page_size: 100, keyword });
-      setLibraryResumes(data.items);
+      const data = await studentApi.list({ page: 1, page_size: 100, keyword });
+      setStudentResumes(data.items);
     } catch (error) {
       showToast(error instanceof ApiError ? error.message : "加载简历库失败");
     } finally {
@@ -183,7 +183,7 @@ export default function App() {
     return () => {
       if (libraryQueryTimerRef.current) window.clearTimeout(libraryQueryTimerRef.current);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+
   }, [libraryQuery]);
 
   useEffect(() => {
@@ -192,7 +192,7 @@ export default function App() {
     const timer = window.setInterval(async () => {
       const previousById = new Map(libraryResumes.map((resume) => [resume.id, resume]));
       try {
-        const data = await candidateApi.list({
+        const data = await studentApi.list({
           page: 1,
           page_size: 100,
           keyword: libraryQuery.trim() || undefined,
@@ -206,7 +206,7 @@ export default function App() {
             && resume.status_note !== "简历解析完成";
         });
 
-        setLibraryResumes(data.items);
+        setStudentResumes(data.items);
         setActiveResume((current) => {
           if (!current) return current;
           return data.items.find((resume) => resume.id === current.id) ?? current;
@@ -215,7 +215,7 @@ export default function App() {
           showToast(completedWithWarning.status_note);
         }
       } catch {
-        // 后台轮询失败时保持当前列表；正常加载和用户操作仍会显示明确错误。
+
       }
     }, 3000);
 
@@ -309,18 +309,18 @@ export default function App() {
     try {
       await authApi.logout();
     } catch {
-      // 忽略登出请求失败，仍清理本地会话
+
     }
     setUser(null);
     setPhase("idle");
     setMatchResults([]);
     setSessionId(null);
-    setActiveCandidate(null);
-    setCandidateChats({});
-    setCandidateChatErrors({});
-    setCandidateChatPendingKey(null);
+    setActiveStudent(null);
+    setStudentChats({});
+    setStudentChatErrors({});
+    setStudentChatPendingKey(null);
     setActiveResume(null);
-    setLibraryResumes([]);
+    setStudentResumes([]);
     setView("match");
     showToast("已退出登录");
   };
@@ -331,7 +331,7 @@ export default function App() {
     const fileArray = Array.from(files);
     setIsUploading(true);
     try {
-      const result = await candidateApi.uploadBatch(fileArray);
+      const result = await studentApi.uploadBatch(fileArray);
       await loadLibrary(libraryQuery.trim() || undefined);
       if (result.failure_count > 0) {
         showToast(`成功上传 ${result.success_count} 份，失败 ${result.failure_count} 份`);
@@ -345,11 +345,11 @@ export default function App() {
     }
   };
 
-  const removeResume = async (resume: LibraryResume) => {
+  const removeResume = async (resume: StudentResume) => {
     if (!requireAuth("管理简历")) return;
     try {
-      await candidateApi.remove(resume.id);
-      setLibraryResumes((prev) => prev.filter((item) => item.id !== resume.id));
+      await studentApi.remove(resume.id);
+      setStudentResumes((prev) => prev.filter((item) => item.id !== resume.id));
       setActiveResume((prev) => (prev?.id === resume.id ? null : prev));
       showToast("已从简历库移除");
     } catch (error) {
@@ -357,12 +357,12 @@ export default function App() {
     }
   };
 
-  const reparseResume = async (resume: LibraryResume) => {
+  const reparseResume = async (resume: StudentResume) => {
     if (!requireAuth("重新解析简历")) return;
     setIsReparsing(true);
     try {
-      const updated = await candidateApi.reparse(resume.id);
-      setLibraryResumes((prev) => prev.map((item) => (item.id === updated.id ? updated : item)));
+      const updated = await studentApi.reparse(resume.id);
+      setStudentResumes((prev) => prev.map((item) => (item.id === updated.id ? updated : item)));
       setActiveResume((prev) => (prev?.id === updated.id ? updated : prev));
       showToast("已提交重新解析任务");
     } catch (error) {
@@ -396,36 +396,36 @@ export default function App() {
     }
   };
 
-  const openLibraryResumePdf = (resume: LibraryResume) => {
-    void openPdfPreview(() => candidateApi.getResumeFileBlob(resume.id), resumeDisplayName(resume));
+  const openStudentResumePdf = (resume: StudentResume) => {
+    void openPdfPreview(() => studentApi.getResumeFileBlob(resume.id), resumeDisplayName(resume));
   };
 
-  const openMatchResumePdf = (candidate: MatchResult) => {
-    if (!candidate.resume_source) return;
+  const openMatchResumePdf = (student: MatchResult) => {
+    if (!student.resume_source) return;
     void openPdfPreview(
-      () => candidateApi.getResumeFileBlobBySource(candidate.resume_source),
-      candidate.candidate_name || "学生简历",
+      () => studentApi.getResumeFileBlobBySource(student.resume_source),
+      student.student_name || "学生简历",
     );
   };
 
   const startAnalysis = async () => {
     if (!requireAuth("开始匹配")) return;
-    if (!jobTitle.trim()) {
+    if (!admissionDirection.trim()) {
       showToast("请先填写招收方向");
       return;
     }
-    if (/博士|硕博/.test(jobTitle)) {
+    if (/博士|硕博/.test(admissionDirection)) {
       showToast("当前仅支持硕士研究生申请筛选");
       return;
     }
-    if (!jobDescription.trim()) {
+    if (!admissionCriteria.trim()) {
       showToast("请先填写期望条件");
       return;
     }
 
     setIsCheckingLibrary(true);
     try {
-      const library = await candidateApi.list({ page: 1, page_size: 1 });
+      const library = await studentApi.list({ page: 1, page_size: 1 });
       if (library.total === 0) {
         showToast("简历库为空，请先上传简历");
         return;
@@ -438,16 +438,16 @@ export default function App() {
     }
 
     setPhase("running");
-    setActiveCandidate(null);
+    setActiveStudent(null);
     setSessionId(null);
     setAdjustmentNote(null);
-    setCandidateChats({});
-    setCandidateChatErrors({});
-    setCandidateChatPendingKey(null);
+    setStudentChats({});
+    setStudentChatErrors({});
+    setStudentChatPendingKey(null);
     setView("match");
 
     try {
-      const result = await matchApi.match(jobTitle.trim(), jobDescription.trim(), resultLimit);
+      const result = await admissionApi.match(admissionDirection.trim(), admissionCriteria.trim(), resultLimit);
       setMatchResults(result.match_results);
       setSessionId(result.session_id);
       setPhase("done");
@@ -465,12 +465,12 @@ export default function App() {
     if (!sessionId || !feedbackText.trim()) return;
     setIsRefining(true);
     try {
-      const result = await matchApi.refine(sessionId, feedbackText.trim());
+      const result = await admissionApi.refine(sessionId, feedbackText.trim());
       setMatchResults(result.match_results);
-      setActiveCandidate(null);
-      setCandidateChats({});
-      setCandidateChatErrors({});
-      setCandidateChatPendingKey(null);
+      setActiveStudent(null);
+      setStudentChats({});
+      setStudentChatErrors({});
+      setStudentChatPendingKey(null);
       setFeedbackText("");
       setAdjustmentNote(result.adjustment_note ?? "已根据反馈更新匹配结果");
       setAdjustDrawerOpen(false);
@@ -482,36 +482,36 @@ export default function App() {
     }
   };
 
-  const sendCandidateQuestion = async (message: string): Promise<boolean> => {
-    const candidate = activeCandidate;
+  const sendStudentQuestion = async (message: string): Promise<boolean> => {
+    const student = activeStudent;
     const currentSessionId = sessionId;
-    if (!candidate || !currentSessionId || !candidate.resume_source) return false;
+    if (!student || !currentSessionId || !student.resume_source) return false;
 
-    const chatKey = `${currentSessionId}:${candidate.resume_source}`;
-    const history = candidateChats[chatKey] ?? [];
-    const optimisticHistory: CandidateChatMessage[] = [
+    const chatKey = `${currentSessionId}:${student.resume_source}`;
+    const history = studentChats[chatKey] ?? [];
+    const optimisticHistory: StudentChatMessage[] = [
       ...history,
       { role: "user", content: message },
     ];
 
-    setCandidateChats((prev) => ({
+    setStudentChats((prev) => ({
       ...prev,
       [chatKey]: [
         ...(prev[chatKey] ?? history),
         { role: "user", content: message },
       ],
     }));
-    setCandidateChatPendingKey(chatKey);
-    setCandidateChatErrors((prev) => ({ ...prev, [chatKey]: "" }));
+    setStudentChatPendingKey(chatKey);
+    setStudentChatErrors((prev) => ({ ...prev, [chatKey]: "" }));
 
     try {
-      const result = await matchApi.chatWithCandidate(
+      const result = await admissionApi.chatWithStudent(
         currentSessionId,
-        candidate.resume_source,
+        student.resume_source,
         message,
         history,
       );
-      setCandidateChats((prev) => ({
+      setStudentChats((prev) => ({
         ...prev,
         [chatKey]: [
           ...(prev[chatKey] ?? optimisticHistory),
@@ -520,17 +520,17 @@ export default function App() {
       }));
       return true;
     } catch (error) {
-      setCandidateChats((prev) => ({
+      setStudentChats((prev) => ({
         ...prev,
         [chatKey]: history,
       }));
-      setCandidateChatErrors((prev) => ({
+      setStudentChatErrors((prev) => ({
         ...prev,
         [chatKey]: error instanceof ApiError ? error.message : "学生分析失败，请稍后重试",
       }));
       return false;
     } finally {
-      setCandidateChatPendingKey((current) => (current === chatKey ? null : current));
+      setStudentChatPendingKey((current) => (current === chatKey ? null : current));
     }
   };
 
@@ -542,29 +542,29 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (!activeCandidate) return;
+    if (!activeStudent) return;
     const frame = window.requestAnimationFrame(() => {
-      if (candidateDrawerBodyRef.current) {
-        candidateDrawerBodyRef.current.scrollTop = 0;
+      if (studentDrawerBodyRef.current) {
+        studentDrawerBodyRef.current.scrollTop = 0;
       }
     });
     return () => window.cancelAnimationFrame(frame);
-  }, [activeCandidate]);
+  }, [activeStudent]);
 
   useEffect(() => {
-    const overlayOpen = Boolean(activeCandidate || activeResume || authOpen || pdfPreview || adjustDrawerOpen);
+    const overlayOpen = Boolean(activeStudent || activeResume || authOpen || pdfPreview || adjustDrawerOpen);
     document.body.classList.toggle("drawer-open", overlayOpen);
     if (pdfPreview) pdfPreviewCloseRef.current?.focus();
-    else if (activeCandidate) closeButtonRef.current?.focus();
+    else if (activeStudent) closeButtonRef.current?.focus();
     else if (activeResume) resumeCloseRef.current?.focus();
     else if (authOpen) authCloseRef.current?.focus();
     else if (adjustDrawerOpen) adjustCloseRef.current?.focus();
 
     const handleEscape = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
-      // PDF 弹窗盖在学生/简历详情抽屉之上，Esc 需要先关它，而不是一次性把下层抽屉也关掉。
+
       if (pdfPreview) closePdfPreview();
-      else if (activeCandidate) setActiveCandidate(null);
+      else if (activeStudent) setActiveStudent(null);
       else if (activeResume) setActiveResume(null);
       else if (authOpen) setAuthOpen(false);
       else if (adjustDrawerOpen) setAdjustDrawerOpen(false);
@@ -575,19 +575,19 @@ export default function App() {
       document.body.classList.remove("drawer-open");
       window.removeEventListener("keydown", handleEscape);
     };
-  }, [activeCandidate, activeResume, authOpen, pdfPreview, adjustDrawerOpen]);
+  }, [activeStudent, activeResume, authOpen, pdfPreview, adjustDrawerOpen]);
 
-  const visibleCandidates = useMemo(() => {
+  const visibleStudents = useMemo(() => {
     const keyword = query.trim().toLowerCase();
     return matchResults
-      .filter((candidate) => {
-        if (scoreFilter === "excellent" && candidate.match_score < 85) return false;
+      .filter((student) => {
+        if (scoreFilter === "excellent" && student.match_score < 85) return false;
         if (!keyword) return true;
         return [
-          candidate.candidate_name,
-          candidate.recommendation,
-          ...candidate.matched_skills,
-          ...candidate.missing_skills,
+          student.student_name,
+          student.recommendation,
+          ...student.matched_skills,
+          ...student.missing_skills,
         ].some((value) => value.toLowerCase().includes(keyword));
       })
       .sort((a, b) => b.match_score - a.match_score);
@@ -753,7 +753,7 @@ export default function App() {
                         <strong>{resumeDisplayName(resume)}</strong>
                         <span>{resume.skills ? truncate(resume.skills, 60) : "技能待解析"}</span>
                         <p className="resume-summary">
-                          {resume.experience || "AI 摘要生成中…"}
+                          {resume.research_experience || "AI 摘要生成中…"}
                         </p>
                         {resume.status_note && resume.status_note !== "简历解析完成" ? (
                           <em>{truncate(resume.status_note, 40)}</em>
@@ -806,21 +806,21 @@ export default function App() {
 
               <div className={`compose-panel ${isAnalyzing ? "is-busy" : ""}`}>
                 <div className="field">
-                  <label htmlFor="job-title">招收方向</label>
+                  <label htmlFor="admission-direction">招收方向</label>
                   <input
-                    id="job-title"
-                    value={jobTitle}
-                    onChange={(event) => setJobTitle(event.target.value)}
+                    id="admission-direction"
+                    value={admissionDirection}
+                    onChange={(event) => setAdmissionDirection(event.target.value)}
                     placeholder="例如：多模态大模型方向硕士"
                   />
                 </div>
 
                 <div className="field">
-                  <label htmlFor="job-description">期望条件</label>
+                  <label htmlFor="admission-criteria">期望条件</label>
                   <textarea
-                    id="job-description"
-                    value={jobDescription}
-                    onChange={(event) => setJobDescription(event.target.value)}
+                    id="admission-criteria"
+                    value={admissionCriteria}
+                    onChange={(event) => setAdmissionCriteria(event.target.value)}
                     spellCheck={false}
                     placeholder="描述希望学生具备的研究方向、专业背景、科研经历、技术能力及加分项…"
                   />
@@ -861,7 +861,7 @@ export default function App() {
               >
                 <div className="section-header">
                   <h2 id="results-title">推荐结果</h2>
-                  <span className="count-chip">{visibleCandidates.length} RESUMES</span>
+                  <span className="count-chip">{visibleStudents.length} RESUMES</span>
                 </div>
 
                 <div className="result-toolbar">
@@ -890,48 +890,48 @@ export default function App() {
                   ) : null}
                 </div>
 
-                <div className="candidate-grid" aria-live="polite">
-                  {visibleCandidates.map((candidate, index) => (
+                <div className="student-grid" aria-live="polite">
+                  {visibleStudents.map((student, index) => (
                     <article
-                      className="candidate-card"
-                      key={`${candidate.candidate_name}-${index}`}
+                      className="student-card"
+                      key={`${student.student_name}-${index}`}
                       style={{ animationDelay: `${index * 55}ms` }}
                     >
-                      <div className="candidate-card-top">
-                        <div className="match-score" aria-label={`匹配度 ${candidate.match_score}`}>
+                      <div className="student-card-top">
+                        <div className="match-score" aria-label={`匹配度 ${student.match_score}`}>
                           <span>匹配度</span>
-                          <strong>{candidate.match_score}</strong>
+                          <strong>{student.match_score}</strong>
                         </div>
                       </div>
 
-                      <div className="candidate-person">
+                      <div className="student-person">
                         <div>
-                          <strong>{candidate.candidate_name || "未知学生"}</strong>
-                          <span className={`proceed-tag ${candidate.should_proceed ? "is-yes" : "is-no"}`}>
-                            {candidate.should_proceed ? "建议推荐面试" : "暂不推荐"}
+                          <strong>{student.student_name || "未知学生"}</strong>
+                          <span className={`proceed-tag ${student.should_proceed ? "is-yes" : "is-no"}`}>
+                            {student.should_proceed ? "建议推荐面试" : "暂不推荐"}
                           </span>
-                          {candidate.education ? (
-                            <small className="candidate-meta">
-                              {candidate.education}
+                          {student.education ? (
+                            <small className="student-meta">
+                              {student.education}
                             </small>
                           ) : null}
                         </div>
                       </div>
 
                       <div className="skill-chip-group">
-                        {candidate.matched_skills.slice(0, 4).map((skill) => (
+                        {student.matched_skills.slice(0, 4).map((skill) => (
                           <span className="skill-chip matched" key={skill}>{skill}</span>
                         ))}
                       </div>
 
-                      <p className="match-summary">{candidate.recommendation || "暂无推荐说明"}</p>
+                      <p className="match-summary">{student.recommendation || "暂无推荐说明"}</p>
 
-                      <div className="candidate-card-footer">
+                      <div className="student-card-footer">
                         <button
                           className="inspect-button"
                           type="button"
-                          aria-label={`查看 ${candidate.candidate_name} 的匹配依据`}
-                          onClick={() => setActiveCandidate(candidate)}
+                          aria-label={`查看 ${student.student_name} 的匹配依据`}
+                          onClick={() => setActiveStudent(student)}
                         >
                           查看依据
                         </button>
@@ -939,7 +939,7 @@ export default function App() {
                     </article>
                   ))}
 
-                  {visibleCandidates.length === 0 ? (
+                  {visibleStudents.length === 0 ? (
                     <div className="empty-state">
                       <Search size={20} />
                       <strong>没有找到匹配的学生</strong>
@@ -1090,15 +1090,15 @@ export default function App() {
         </div>
       ) : null}
 
-      {activeCandidate ? (
+      {activeStudent ? (
         <div
           className="drawer-layer"
           role="presentation"
           onMouseDown={(event) => {
-            if (event.target === event.currentTarget) setActiveCandidate(null);
+            if (event.target === event.currentTarget) setActiveStudent(null);
           }}
         >
-          <aside className="candidate-drawer" role="dialog" aria-modal="true" aria-labelledby="candidate-name">
+          <aside className="student-drawer" role="dialog" aria-modal="true" aria-labelledby="student-name">
             <header className="drawer-header">
               <div className="drawer-code">
                 <span>MATCH EVIDENCE</span>
@@ -1108,42 +1108,42 @@ export default function App() {
                 ref={closeButtonRef}
                 className="icon-button"
                 type="button"
-                onClick={() => setActiveCandidate(null)}
+                onClick={() => setActiveStudent(null)}
                 aria-label="关闭学生详情"
               >
                 <X size={18} />
               </button>
             </header>
 
-            <div ref={candidateDrawerBodyRef} className="drawer-body">
-              <section className="candidate-profile">
+            <div ref={studentDrawerBodyRef} className="drawer-body">
+              <section className="student-profile">
                 <div>
-                  <h2 id="candidate-name">{activeCandidate.candidate_name || "未知学生"}</h2>
-                  <p>{activeCandidate.should_proceed ? "建议推荐面试" : "暂不推荐"}</p>
-                  {activeCandidate.education ? (
-                    <span>{activeCandidate.education}</span>
+                  <h2 id="student-name">{activeStudent.student_name || "未知学生"}</h2>
+                  <p>{activeStudent.should_proceed ? "建议推荐面试" : "暂不推荐"}</p>
+                  {activeStudent.education ? (
+                    <span>{activeStudent.education}</span>
                   ) : null}
                 </div>
                 <div className="drawer-score">
-                  <strong>{activeCandidate.match_score}</strong>
+                  <strong>{activeStudent.match_score}</strong>
                   <span>匹配度</span>
                 </div>
               </section>
 
               <section className="drawer-section ai-summary">
                 <div className="drawer-section-title"><Bot size={16} /><h3>AI 推荐结论</h3></div>
-                <p>{activeCandidate.recommendation || "暂无推荐说明"}</p>
+                <p>{activeStudent.recommendation || "暂无推荐说明"}</p>
               </section>
 
               <section className="drawer-section">
                 <div className="drawer-section-title">
                   <Check size={16} />
                   <h3>匹配技能</h3>
-                  <span>{activeCandidate.matched_skills.length} 项</span>
+                  <span>{activeStudent.matched_skills.length} 项</span>
                 </div>
                 <div className="skill-chip-group">
-                  {activeCandidate.matched_skills.length > 0 ? (
-                    activeCandidate.matched_skills.map((skill) => (
+                  {activeStudent.matched_skills.length > 0 ? (
+                    activeStudent.matched_skills.map((skill) => (
                       <span className="skill-chip matched" key={skill}>{skill}</span>
                     ))
                   ) : (
@@ -1155,8 +1155,8 @@ export default function App() {
               <section className="drawer-section risk-section">
                 <div className="drawer-section-title"><AlertTriangle size={16} /><h3>需要关注</h3></div>
                 <div className="skill-chip-group">
-                  {activeCandidate.missing_skills.length > 0 ? (
-                    activeCandidate.missing_skills.map((skill) => (
+                  {activeStudent.missing_skills.length > 0 ? (
+                    activeStudent.missing_skills.map((skill) => (
                       <span className="skill-chip missing" key={skill}>{skill}</span>
                     ))
                   ) : (
@@ -1167,28 +1167,28 @@ export default function App() {
 
               <section className="drawer-section ai-summary">
                 <div className="drawer-section-title"><FileText size={16} /><h3>AI 简历摘要</h3></div>
-                <p>{activeCandidate.summary || "暂无摘要"}</p>
+                <p>{activeStudent.summary || "暂无摘要"}</p>
               </section>
 
-              <CandidateChatPanel
-                candidateName={activeCandidate.candidate_name}
-                messages={activeCandidateChatMessages}
-                isSending={candidateChatPendingKey === activeCandidateChatKey}
-                error={activeCandidateChatKey ? candidateChatErrors[activeCandidateChatKey] ?? "" : ""}
-                disabled={!sessionId || !activeCandidate.resume_source}
-                onSend={sendCandidateQuestion}
+              <StudentChatPanel
+                studentName={activeStudent.student_name}
+                messages={activeStudentChatMessages}
+                isSending={studentChatPendingKey === activeStudentChatKey}
+                error={activeStudentChatKey ? studentChatErrors[activeStudentChatKey] ?? "" : ""}
+                disabled={!sessionId || !activeStudent.resume_source}
+                onSend={sendStudentQuestion}
               />
             </div>
 
             <footer className="drawer-footer">
-              <button className="secondary-button" type="button" onClick={() => setActiveCandidate(null)}>
+              <button className="secondary-button" type="button" onClick={() => setActiveStudent(null)}>
                 关闭
               </button>
               <button
                 className="primary-button"
                 type="button"
-                disabled={isOpeningResumeFile || !activeCandidate.resume_source}
-                onClick={() => openMatchResumePdf(activeCandidate)}
+                disabled={isOpeningResumeFile || !activeStudent.resume_source}
+                onClick={() => openMatchResumePdf(activeStudent)}
               >
                 {isOpeningResumeFile ? <LoaderCircle size={15} className="spin" /> : <ExternalLink size={15} />}
                 查看原始简历
@@ -1206,7 +1206,7 @@ export default function App() {
             if (event.target === event.currentTarget) setActiveResume(null);
           }}
         >
-          <aside className="candidate-drawer" role="dialog" aria-modal="true" aria-labelledby="resume-detail-name">
+          <aside className="student-drawer" role="dialog" aria-modal="true" aria-labelledby="resume-detail-name">
             <header className="drawer-header">
               <div className="drawer-code">
                 <span>RESUME DETAIL</span>
@@ -1224,7 +1224,7 @@ export default function App() {
             </header>
 
             <div className="drawer-body">
-              <section className="candidate-profile">
+              <section className="student-profile">
                 <div>
                   <h2 id="resume-detail-name">{resumeDisplayName(activeResume)}</h2>
                   <p>{PARSE_STATUS_LABEL[activeResume.parse_status] ?? activeResume.parse_status}</p>
@@ -1250,7 +1250,7 @@ export default function App() {
 
               <section className="drawer-section ai-summary">
                 <div className="drawer-section-title"><Bot size={16} /><h3>AI 简历摘要</h3></div>
-                <p>{activeResume.experience || "AI 摘要生成中，请稍后刷新查看"}</p>
+                <p>{activeResume.research_experience || "AI 摘要生成中，请稍后刷新查看"}</p>
               </section>
 
               <section className="drawer-section">
@@ -1302,7 +1302,7 @@ export default function App() {
                 className="primary-button"
                 type="button"
                 disabled={isOpeningResumeFile}
-                onClick={() => openLibraryResumePdf(activeResume)}
+                onClick={() => openStudentResumePdf(activeResume)}
               >
                 {isOpeningResumeFile ? <LoaderCircle size={15} className="spin" /> : <ExternalLink size={15} />}
                 查看原始简历
@@ -1320,7 +1320,7 @@ export default function App() {
             if (event.target === event.currentTarget && !isRefining) setAdjustDrawerOpen(false);
           }}
         >
-          <aside className="candidate-drawer adjust-drawer" role="dialog" aria-modal="true" aria-labelledby="adjust-drawer-title">
+          <aside className="student-drawer adjust-drawer" role="dialog" aria-modal="true" aria-labelledby="adjust-drawer-title">
             <header className="drawer-header">
               <div className="drawer-code">
                 <span>REFINE RESULTS</span>

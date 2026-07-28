@@ -1,4 +1,4 @@
-// 与 Java 后端 UserResponse 对齐
+
 export type AuthUser = {
   id: number;
   username: string;
@@ -18,7 +18,7 @@ export type CaptchaChallenge = {
   expires_in_seconds: number;
 };
 
-// 与 Java 后端 PageResponse<T> 对齐
+
 export type PageResponse<T> = {
   items: T[];
   total: number;
@@ -26,18 +26,18 @@ export type PageResponse<T> = {
   page_size: number;
 };
 
-// 简历解析状态：待解析 / 解析中 / 已解析 / 失败
+
 export type ParseStatus = "pending" | "parsing" | "parsed" | "failed";
 
-// 与 Java 后端 CandidateResponse 对齐
-export type LibraryResume = {
+
+export type StudentResume = {
   id: number;
   name: string;
   email: string;
   phone: string;
   skills: string;
   education: string;
-  experience: string;
+  research_experience: string;
   status: string;
   resume_file_path: string;
   status_note: string;
@@ -52,12 +52,12 @@ export type UploadFailure = {
   error: string;
 };
 
-export type UploadResult = LibraryResume & {
+export type UploadResult = StudentResume & {
   filename: string;
   warnings?: string[];
 };
 
-// 与 Java 后端 CandidateController#uploadBatch 返回体对齐
+
 export type BatchUploadResult = {
   items: UploadResult[];
   failures: UploadFailure[];
@@ -77,9 +77,9 @@ export type ScoreBreakdown = {
   calibration_status: "success" | "fallback" | "disabled" | "unavailable";
 };
 
-// 与 Python agent.schemas.MatchResult 对齐
+
 export type MatchResult = {
-  candidate_name: string;
+  student_name: string;
   match_score: number;
   matched_skills: string[];
   missing_skills: string[];
@@ -92,21 +92,21 @@ export type MatchResult = {
   summary: string;
 };
 
-// 与 Python agent.schemas.RecruitmentOutput 对齐
-export type RecruitmentOutput = {
+
+export type AdmissionOutput = {
   session_id: string;
   match_results: MatchResult[];
-  // 仅 /api/recruit/refine 会赋值：这一轮反馈触发了期望条件调整时的说明文字
-  // （正常完成时是变更摘要；Agent 未按预期走完检索+打分时是"仍是旧结果"的提示）。
+
+
   adjustment_note?: string | null;
 };
 
-export type CandidateChatMessage = {
+export type StudentChatMessage = {
   role: "user" | "assistant";
   content: string;
 };
 
-export type CandidateChatResponse = {
+export type StudentChatResponse = {
   answer: string;
 };
 

@@ -15,12 +15,12 @@ import config
 
 logger = logging.getLogger(__name__)
 
-# DeepSeek-OCR 官方推荐的"无版面纯文本"提示词（见 DeepSeek-OCR README：
-# without layouts: "<image>\nFree OCR."）。用自然语言长提示反而会触发它吐
-# 出一段"当前模式为…"之类的元说明，污染识别结果。
+
+
+
 _DEEPSEEK_OCR_PROMPT = "Free OCR."
 
-# Qwen / Paddle 等通用视觉模型用自然语言约束更稳。
+
 _GENERIC_OCR_PROMPT = (
     "你是专业的简历 OCR 识别助手。请识别图片中的所有文字内容，按图片中的原始排版顺序"
     "（从上到下、从左到右）输出为纯文本，保留换行，不要翻译、不要总结、不要分类、"
@@ -59,11 +59,11 @@ def extract_text_from_image(image_bytes: bytes, image_ext: str) -> str:
     encoded = base64.b64encode(image_bytes).decode("ascii")
     data_url = f"data:{mime};base64,{encoded}"
 
-    # max_retries=0：换模型重试的逻辑已经在下面的循环里做了，openai SDK 自带的
-    # 自动重试（默认最多重试 2 次）会让"单个模型的超时预算"被成倍放大——一次
-    # create() 调用最坏情况下等于 OCR_TIMEOUT_SECONDS × (1 + 默认重试次数)，
-    # 跟外层按"1 个模型 = 1 份超时预算"算出来的总超时对不上，会导致明明该换
-    # 下一个模型了，却还在同一个慢模型上反复原地重试。
+
+
+
+
+
     client = OpenAI(
         api_key=config.OCR_API_KEY,
         base_url=config.OCR_BASE_URL,

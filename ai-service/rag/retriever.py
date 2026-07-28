@@ -1,4 +1,4 @@
-"""Retriever interface for the recruitment RAG pipeline.
+"""Retriever interface for the admission RAG pipeline.
 
 混合检索：语义检索（pgvector 余弦相似度）+ 关键词检索（BM25）各自归一化后
 加权融合，权重见 config.HYBRID_SEMANTIC_WEIGHT / HYBRID_KEYWORD_WEIGHT
@@ -37,8 +37,8 @@ def _get_vector_store():
         from config import VECTOR_STORE_PATH
         from rag.vector_store import load_vector_store
 
-        # 候选人只能由带 owner_user_id 的内部写入接口建立索引。这里绝不扫描
-        # 共享简历目录自动建库，否则无法可靠恢复每份历史文件的所有者。
+
+
         _vector_store = load_vector_store(VECTOR_STORE_PATH)
     return _vector_store
 
@@ -47,9 +47,9 @@ def _get_bm25_index(owner_user_id: int):
     global _bm25_indexes
     if owner_user_id not in _bm25_indexes:
         from rag.bm25 import BM25Index
-        from rag.vector_store import load_candidate_corpus
+        from rag.vector_store import load_student_corpus
 
-        _bm25_indexes[owner_user_id] = BM25Index(load_candidate_corpus(owner_user_id))
+        _bm25_indexes[owner_user_id] = BM25Index(load_student_corpus(owner_user_id))
     return _bm25_indexes[owner_user_id]
 
 
@@ -61,8 +61,8 @@ def _normalize(scores: dict[str, float]) -> dict[str, float]:
     values = list(scores.values())
     lo, hi = min(values), max(values)
     if hi - lo < 1e-9:
-        # 所有候选人分数相同（含只有一个候选人的情况），归一化没有意义，统一给满分，
-        # 避免除以 0，也避免出现"分数相同却排序不公平"的假象。
+
+
         return {source: 1.0 for source in scores}
     return {source: (value - lo) / (hi - lo) for source, value in scores.items()}
 
@@ -158,5 +158,5 @@ def get_retriever(top_k: int = 5, owner_user_id: int | None = None) -> HybridRet
     The caller interface (``retriever.invoke(query)``) stays the same.
     """
     if owner_user_id is None:
-        raise ValueError("owner_user_id is required for candidate retrieval")
+        raise ValueError("owner_user_id is required for student retrieval")
     return HybridRetriever(top_k=top_k, owner_user_id=owner_user_id)

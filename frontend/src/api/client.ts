@@ -2,16 +2,16 @@ import type {
   AuthUser,
   BatchUploadResult,
   CaptchaChallenge,
-  CandidateChatMessage,
-  CandidateChatResponse,
-  LibraryResume,
+  StudentChatMessage,
+  StudentChatResponse,
+  StudentResume,
   LoginResponse,
   PageResponse,
-  RecruitmentOutput,
+  AdmissionOutput,
 } from "../types";
 
-// 开发环境下 vite.config.ts 已将 /api 代理到 Java 后端（默认 8080）；
-// 生产环境可通过 VITE_API_BASE_URL 指向部署后的后端地址。
+
+
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.replace(/\/$/, "") || "";
 
 const TOKEN_KEY = "matchcv-token";
@@ -51,7 +51,7 @@ export function clearSession() {
 async function extractErrorMessage(response: Response): Promise<string> {
   try {
     const body = await response.json();
-    // Java 统一错误体 {error, message, status_code}；Python 透传时可能是 {detail}。
+
     return body?.message || body?.detail || `请求失败（${response.status}）`;
   } catch {
     return `请求失败（${response.status}）`;
@@ -143,71 +143,71 @@ export const authApi = {
   },
 };
 
-export const candidateApi = {
+export const studentApi = {
   list(params: { page?: number; page_size?: number; keyword?: string } = {}) {
     const query = new URLSearchParams();
     if (params.page) query.set("page", String(params.page));
     if (params.page_size) query.set("page_size", String(params.page_size));
     if (params.keyword) query.set("keyword", params.keyword);
     const qs = query.toString();
-    return request<PageResponse<LibraryResume>>(`/api/candidates${qs ? `?${qs}` : ""}`);
+    return request<PageResponse<StudentResume>>(`/api/students${qs ? `?${qs}` : ""}`);
   },
 
   uploadBatch(files: File[]) {
     const form = new FormData();
     files.forEach((file) => form.append("files", file));
-    return request<BatchUploadResult>("/api/candidates/upload/batch", {
+    return request<BatchUploadResult>("/api/students/upload/batch", {
       method: "POST",
       body: form,
     });
   },
 
   remove(id: number) {
-    return request<void>(`/api/candidates/${id}`, { method: "DELETE" });
+    return request<void>(`/api/students/${id}`, { method: "DELETE" });
   },
 
-  // 异步提交一次 AI 重新解析任务；返回值会立即进入 parsing/pending，
-  // 后续由简历库已有的轮询逻辑刷新最终结果。
+
+
   reparse(id: number) {
-    return request<LibraryResume>(`/api/candidates/${id}/reparse`, { method: "POST" });
+    return request<StudentResume>(`/api/students/${id}/reparse`, { method: "POST" });
   },
 
-  // 简历原文接口需要携带 Authorization 头，无法直接用 <a href> 打开，
-  // 因此以 blob 方式取回文件内容，交给调用方生成 object URL 做站内弹窗预览。
+
+
   getResumeFileBlob(id: number): Promise<Blob> {
-    return fetchBlob(`/api/candidates/${id}/resume-file`);
+    return fetchBlob(`/api/students/${id}/resume-file`);
   },
 
-  // 智能匹配结果页只有 AI 返回的 resume_source 路径、没有学生 id，
-  // 用同一份文件按路径查找的入口来预览。
+
+
   getResumeFileBlobBySource(source: string): Promise<Blob> {
-    return fetchBlob(`/api/candidates/resume-file?source=${encodeURIComponent(source)}`);
+    return fetchBlob(`/api/students/resume-file?source=${encodeURIComponent(source)}`);
   },
 };
 
-export const matchApi = {
-  match(jobTitle: string, jobDescription: string, topK: number) {
-    const userInput = `招收方向：${jobTitle}\n期望条件：${jobDescription}`;
-    return request<RecruitmentOutput>("/api/recruit", {
+export const admissionApi = {
+  match(admissionDirection: string, admissionCriteria: string, topK: number) {
+    const userInput = `招收方向：${admissionDirection}\n期望条件：${admissionCriteria}`;
+    return request<AdmissionOutput>("/api/admission", {
       method: "POST",
       body: JSON.stringify({ user_input: userInput, top_k: topK }),
     });
   },
 
   refine(sessionId: string, message: string) {
-    return request<RecruitmentOutput>("/api/recruit/refine", {
+    return request<AdmissionOutput>("/api/admission/refine", {
       method: "POST",
       body: JSON.stringify({ session_id: sessionId, message }),
     });
   },
 
-  chatWithCandidate(
+  chatWithStudent(
     sessionId: string,
     resumeSource: string,
     message: string,
-    history: CandidateChatMessage[],
+    history: StudentChatMessage[],
   ) {
-    return request<CandidateChatResponse>("/api/recruit/candidate-chat", {
+    return request<StudentChatResponse>("/api/admission/student-chat", {
       method: "POST",
       body: JSON.stringify({
         session_id: sessionId,

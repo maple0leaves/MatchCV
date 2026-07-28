@@ -6,7 +6,7 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer
 from backend.auth.jwt import decode_token
 
-# Bearer token scheme (from Authorization header)
+
 bearer_scheme = HTTPBearer(auto_error=False)
 
 

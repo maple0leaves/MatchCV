@@ -103,7 +103,7 @@ def _ensure_resume_table(conn, table: str, dim: int, recreate: bool = False) -> 
             """
         )
         cur.execute(f'CREATE INDEX ON "{table}" (owner_user_id, source)')
-        # HNSW：该数据量级下构建快、查询快，优于 IVFFlat（不需要预先估算 lists 数）。
+
         cur.execute(
             f'CREATE INDEX ON "{table}" USING hnsw (vector vector_cosine_ops)'
         )
@@ -116,7 +116,7 @@ def _delete_existing_source(conn, table: str, owner_user_id: int, source: str) -
                 f'DELETE FROM "{table}" WHERE owner_user_id = %s AND source = %s',
                 (owner_user_id, source[:1024]),
             )
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         print(f"[VectorStore] 删除旧候选人向量失败，继续插入新向量：{exc}", flush=True)
 
 
@@ -155,7 +155,7 @@ class PgVectorResumeStore:
     def similarity_search(self, query: str, k: int = 5,
                           owner_user_id: int | None = None) -> list[Document]:
         if owner_user_id is None:
-            raise ValueError("owner_user_id is required for candidate search")
+            raise ValueError("owner_user_id is required for student search")
         conn = _get_connection()
         if not _table_exists(conn, self._table):
             return []
@@ -163,7 +163,7 @@ class PgVectorResumeStore:
         vector = self._embeddings.embed_query(query)
         fetch_k = max(k * 4, k)
         with conn.cursor() as cur:
-            # <=> 是 pgvector 的余弦距离操作符；1 - distance 还原成相似度分数。
+
             cur.execute(
                 f"""
                 SELECT text, name, source, 1 - (vector <=> %s::vector) AS score
@@ -194,7 +194,7 @@ class PgVectorResumeStore:
         return docs
 
 
-def load_candidate_corpus(owner_user_id: int) -> list[tuple[str, str, str]]:
+def load_student_corpus(owner_user_id: int) -> list[tuple[str, str, str]]:
     """按候选人聚合的语料：一行一个候选人 (source, name, 全部chunk拼接文本)。
 
     供 ``rag.bm25.BM25Index`` 构建关键词索引使用——索引粒度对齐语义检索侧
@@ -278,7 +278,7 @@ def _invalidate_retriever_cache() -> None:
 
 def _extract_pdf_text(file: Path) -> str:
     """Extract plain text from a PDF file using pymupdf (better CJK support)."""
-    import fitz  # pymupdf
+    import fitz
 
     doc = fitz.open(str(file))
     pages = [page.get_text() for page in doc]
@@ -291,7 +291,7 @@ class HashEmbeddings:
 
     OpenRouter is used for chat completion in this project, but it does not
     always expose an embeddings endpoint. This lightweight hashing embedding
-    keeps candidate indexing and matching available without another service.
+    keeps student indexing and matching available without another service.
     """
 
     dimension = 384
@@ -331,7 +331,7 @@ def _get_embeddings():
 
     显式传 timeout：不传的话 langchain_openai 会落到 OpenAI SDK 的默认值
     （600 秒），一次几百字的文本转向量调用完全不需要那么长的预算，一旦供应商
-    网络抖动，没有这个显式超时会把整条 /api/recruit 请求拖住到 10 分钟。
+    网络抖动，没有这个显式超时会把整条 /api/admission 请求拖住到 10 分钟。
     """
     from config import EMBEDDING_API_KEY, EMBEDDING_BACKEND, EMBEDDING_BASE_URL, EMBEDDING_MODEL, EMBEDDING_TIMEOUT
 
@@ -344,13 +344,13 @@ def _get_embeddings():
     if EMBEDDING_BASE_URL:
         kwargs["base_url"] = EMBEDDING_BASE_URL
         kwargs["default_headers"] = {
-            "HTTP-Referer": "https://github.com/recruitment-agent",
+            "HTTP-Referer": "https://github.com/admission-agent",
         }
     return OpenAIEmbeddings(**kwargs)
 
 
 def delete_resume_document(owner_user_id: int, source: str) -> int:
-    """Delete all vector chunks for a candidate identified by *source*.
+    """Delete all vector chunks for a student identified by *source*.
 
     Returns the number of rows deleted (0 if the source was not indexed).
     """
@@ -377,7 +377,7 @@ def delete_resume_document(owner_user_id: int, source: str) -> int:
 
 
 def sync_vector_ownership(mappings: list[tuple[int, str]]) -> int:
-    """Assign owners to legacy rows by their Java candidate source path."""
+    """Assign owners to legacy rows by their Java student source path."""
     from config import PGVECTOR_TABLE
 
     if not mappings:
@@ -385,8 +385,8 @@ def sync_vector_ownership(mappings: list[tuple[int, str]]) -> int:
     conn = _get_connection()
     if not _table_exists(conn, PGVECTOR_TABLE):
         return 0
-    # Existing installations gain the ownership column here even before the
-    # next insert/query initializes it through _ensure_resume_table.
+
+
     with conn.cursor() as cur:
         cur.execute(
             f'ALTER TABLE "{PGVECTOR_TABLE}" '
@@ -409,15 +409,15 @@ def sync_vector_ownership(mappings: list[tuple[int, str]]) -> int:
 
 def upsert_resume_document(owner_user_id: int, name: str, source: str, text: str,
                            store_path: str | None = None) -> int:
-    """Insert or replace one candidate resume document in pgvector."""
+    """Insert or replace one student resume document in pgvector."""
     from config import PGVECTOR_TABLE, RESUME_DIR, VECTOR_STORE_PATH
 
     clean_text = (text or "").strip()
     if not clean_text:
-        raise ValueError("candidate resume text is empty")
+        raise ValueError("student resume text is empty")
 
     safe_name = (name or "候选人").strip()
-    safe_source = (source or f"candidate:{safe_name}").strip()
+    safe_source = (source or f"student:{safe_name}").strip()
     doc = Document(
         page_content=clean_text,
         metadata={
@@ -432,7 +432,7 @@ def upsert_resume_document(owner_user_id: int, name: str, source: str, text: str
     embeddings = _get_embeddings()
     vectors = embeddings.embed_documents([d.page_content for d in split_docs])
     if not vectors:
-        raise ValueError("candidate resume text produced no vector chunks")
+        raise ValueError("student resume text produced no vector chunks")
 
     conn = _get_connection()
     _ensure_resume_table(conn, PGVECTOR_TABLE, len(vectors[0]))
@@ -464,11 +464,11 @@ def _load_resume_documents(resume_dir: str) -> list[Document]:
             print(f"[VectorStore] 警告：{file.name} 内容为空，已跳过")
             continue
 
-        candidate_name = file.stem.replace("_", " ").title()
+        student_name = file.stem.replace("_", " ").title()
         docs.append(
             Document(
                 page_content=text,
-                metadata={"name": candidate_name, "source": str(file)},
+                metadata={"name": student_name, "source": str(file)},
             )
         )
     return docs

@@ -3,7 +3,7 @@ server:
 
 spring:
   application:
-    name: agent-recruit-backend
+    name: student-admission-backend
   mvc:
     async:
       request-timeout: 300000
@@ -30,7 +30,7 @@ spring:
 rocketmq:
   name-server: ${ROCKETMQ_NAME_SERVER:localhost:9876}
   producer:
-    group: ${ROCKETMQ_PRODUCER_GROUP:agent-recruit-producer}
+    group: ${ROCKETMQ_PRODUCER_GROUP:student-admission-producer}
     send-message-timeout: ${ROCKETMQ_SEND_TIMEOUT_MS:3000}
 
 mybatis-plus:
@@ -41,14 +41,14 @@ mybatis-plus:
       id-type: auto
   mapper-locations: classpath*:mapper/*.xml
 
-# ── Application-specific config ──────────────────────────────────────────
+
 app:
   environment: ${APP_ENV:development}
   jwt:
-    # 必须与 Python 端 .env 的 JWT_SECRET 一致，两服务才能互认 token。
-    # 不提供仿真默认值：没配置就用一个明显的占位符，避免误把它当成"已配置好"的真实密钥。
+
+
     secret: ${JWT_SECRET:change-me-in-production-use-random-32-bytes}
-    # 单一 token 模型，没有 access/refresh 之分：过期后重新登录即可，不做静默续期。
+
     token-expire-minutes: ${TOKEN_EXPIRE_MINUTES:10080}
   cors:
     origins: ${CORS_ORIGINS:http://localhost:5173,http://localhost:5174,http://localhost:8080,http://localhost:18008,http://127.0.0.1:18008}
@@ -60,20 +60,20 @@ app:
     block-minutes: 15
   captcha:
     expires-seconds: ${CAPTCHA_EXPIRES_SECONDS:180}
-  candidate-detail-cache:
-    enabled: ${CANDIDATE_DETAIL_CACHE_ENABLED:true}
-    ttl-seconds: ${CANDIDATE_DETAIL_CACHE_TTL_SECONDS:300}
-    ttl-jitter-seconds: ${CANDIDATE_DETAIL_CACHE_TTL_JITTER_SECONDS:120}
-    null-ttl-seconds: ${CANDIDATE_DETAIL_CACHE_NULL_TTL_SECONDS:30}
-    second-evict-delay-ms: ${CANDIDATE_DETAIL_CACHE_SECOND_EVICT_DELAY_MS:1000}
+  student-detail-cache:
+    enabled: ${STUDENT_DETAIL_CACHE_ENABLED:true}
+    ttl-seconds: ${STUDENT_DETAIL_CACHE_TTL_SECONDS:300}
+    ttl-jitter-seconds: ${STUDENT_DETAIL_CACHE_TTL_JITTER_SECONDS:120}
+    null-ttl-seconds: ${STUDENT_DETAIL_CACHE_NULL_TTL_SECONDS:30}
+    second-evict-delay-ms: ${STUDENT_DETAIL_CACHE_SECOND_EVICT_DELAY_MS:1000}
   ai:
-    # Python AI 服务地址（用于 /api/recruit* 反向代理）
+
     base-url: ${AI_SERVICE_URL:http://localhost:8008}
-    # 仅 Java -> Python 内部接口使用；生产环境必须替换为随机长密钥。
+
     internal-token: ${INTERNAL_SERVICE_TOKEN:dev-internal-token-change-in-production}
   resume:
-    # 简历保存目录，需与 Python 端 RESUME_DIR 指向同一目录，向量库才能读到。
-    # 默认值是明显的占位符，实际部署必须通过 RESUME_DIR 环境变量显式指定。
+
+
     dir: ${RESUME_DIR:/change-me/data/resumes}
     executor:
       core-size: ${RESUME_PARSE_CORE_SIZE:2}
@@ -88,11 +88,11 @@ app:
   rocketmq:
     enabled: ${APP_ROCKETMQ_ENABLED:true}
     topics:
-      resume-parse: ${ROCKETMQ_RESUME_PARSE_TOPIC:agent-recruit-resume-parse}
+      resume-parse: ${ROCKETMQ_RESUME_PARSE_TOPIC:student-admission-resume-parse}
     consumer-groups:
-      resume-parse: ${ROCKETMQ_RESUME_PARSE_CONSUMER_GROUP:agent-recruit-resume-parse-consumer}
+      resume-parse: ${ROCKETMQ_RESUME_PARSE_CONSUMER_GROUP:student-admission-resume-parse-consumer}
 
-# ── Knife4j / OpenAPI ────────────────────────────────────────────────────
+
 springdoc:
   swagger-ui:
     path: /swagger-ui.html
@@ -103,4 +103,4 @@ knife4j:
 
 logging:
   level:
-    com.agentrecruit: INFO
+    com.studentadmission: INFO

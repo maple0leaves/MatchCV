@@ -1,4 +1,4 @@
-"""Regression tests for multi-user candidate and Agent-session isolation."""
+"""Regression tests for multi-user student and Agent-session isolation."""
 
 import sqlite3
 import threading
@@ -19,7 +19,7 @@ def test_hybrid_retriever_passes_owner_to_semantic_and_keyword_paths(monkeypatch
             return [
                 Document(
                     page_content="Python",
-                    metadata={"name": "本用户候选人", "source": "own.pdf", "score": 0.9},
+                    metadata={"name": "本用户学生", "source": "own.pdf", "score": 0.9},
                 )
             ]
 
@@ -32,7 +32,7 @@ def test_hybrid_retriever_passes_owner_to_semantic_and_keyword_paths(monkeypatch
             return "Python"
 
         def get_name(self, source):
-            return "本用户候选人"
+            return "本用户学生"
 
     monkeypatch.setattr(retriever_mod, "_get_vector_store", lambda: FakeStore())
     monkeypatch.setattr(
@@ -78,7 +78,7 @@ def test_refine_session_rejects_different_owner_before_invoking_graph(monkeypatc
 
     monkeypatch.setattr(main_mod, "_checkpoint_conn", conn)
     monkeypatch.setattr(main_mod, "_activity_lock", threading.Lock())
-    monkeypatch.setattr(main_mod, "recruitment_graph", FakeGraph())
+    monkeypatch.setattr(main_mod, "admission_graph", FakeGraph())
 
     with pytest.raises(main_mod.SessionAccessDeniedError):
         main_mod.refine_session("session-a", "继续", owner_user_id=11)
@@ -90,7 +90,7 @@ def test_internal_api_rejects_missing_and_wrong_service_token():
     from api.server import app
 
     client = TestClient(app)
-    payload = {"text": "张三 Python 工程师"}
+    payload = {"text": "张三 具备 Python 基础的硕士生"}
     assert client.post("/api/internal/parse-resume", json=payload).status_code == 401
     assert client.post(
         "/api/internal/parse-resume",

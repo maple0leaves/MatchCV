@@ -1,3 +1,3 @@
-export const defaultJobDescription = `学历本科，希望学生对多模态大模型、计算机视觉或自然语言处理方向有明确兴趣。
+export const defaultAdmissionCriteria = `学历本科，希望学生对多模态大模型、计算机视觉或自然语言处理方向有明确兴趣。
 
 具备 Python 基础，使用过 PyTorch，用LoRA微调过大模型；有相关科研、课程设计或项目经历，能够说明本人承担的具体工作。有论文、竞赛、开源项目或可验证实验成果者优先，不强制要求已发表论文。`;
