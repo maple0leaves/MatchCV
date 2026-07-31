@@ -37,7 +37,7 @@ curl --fail --silent --show-error \
   python3 -c 'import json,sys; assert json.load(sys.stdin)["sub"]'
 curl --fail --silent --show-error \
   -H "Authorization: Bearer $token" \
-  "$BASE_URL/api/candidates?page=1&page_size=1" |
+  "$BASE_URL/api/students?page=1&page_size=1" |
   python3 -c 'import json,sys; data=json.load(sys.stdin); assert "items" in data and "total" in data'
 
 "${COMPOSE[@]}" ps

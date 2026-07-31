@@ -598,6 +598,8 @@ def _extract_education(text: str) -> str:
             "博士",
             (
                 r"博士(?:研究生)?(?:在读|毕业|学历|学位|阶段|学生)",
+                r"(?:最高)?学历\s*[:：|]?\s*博士",
+                r"博士(?:研究生)?\s*(?=20\d{2}[./-])",
                 r"(?:获|获得|取得|攻读|就读)[^。\n；;]{0,20}博士",
                 r"\bph\.?\s*d\.?\b",
                 r"\bdoctoral\s+(?:student|student|degree)\b",
@@ -609,6 +611,8 @@ def _extract_education(text: str) -> str:
             (
                 r"硕士(?:研究生)?(?:在读|毕业|学历|学位|阶段)",
                 r"研究生(?:在读|毕业|学历|学位|阶段)",
+                r"(?:最高)?学历\s*[:：|]?\s*(?:硕士|研究生)",
+                r"(?:硕士|研究生)\s*(?=20\d{2}[./-])",
                 r"(?:获|获得|取得|攻读|就读)[^。\n；;]{0,20}(?:硕士|研究生)",
                 r"\bm\.?\s*sc\.?\b",
                 r"\bm\.?\s*s\.?\b",
@@ -619,6 +623,8 @@ def _extract_education(text: str) -> str:
             "本科",
             (
                 r"本科(?:在读|毕业|学历|阶段|生)",
+                r"(?:最高)?学历\s*[:：|]?\s*本科",
+                r"本科\s*(?=20\d{2}[./-])",
                 r"(?:工学|理学|文学|管理学|经济学|法学|教育学|医学|农学|艺术学)?学士(?:学位)?",
                 r"(?:获|获得|取得|攻读|就读)[^。\n；;]{0,20}(?:本科|学士)",
                 r"\bb\.?\s*sc\.?\b",
@@ -626,15 +632,22 @@ def _extract_education(text: str) -> str:
                 r"\bbachelor(?:'s)?\s+degree\b",
             ),
         ),
-        ("专科", (r"(?:大专|专科)(?:在读|毕业|学历|阶段|生)",)),
+        (
+            "专科",
+            (
+                r"(?:大专|专科)(?:在读|毕业|学历|阶段|生)",
+                r"(?:最高)?学历\s*[:：|]?\s*(?:大专|专科)",
+                r"(?:大专|专科)\s*(?=20\d{2}[./-])",
+            ),
+        ),
     )
     for level, patterns in explicit_patterns:
         if any(re.search(pattern, cleaned, re.IGNORECASE) for pattern in patterns):
             return level
 
-    for value in ["博士", "硕士", "研究生", "本科", "大专", "专科"]:
+    for value in ["本科", "大专", "专科"]:
         if value in cleaned:
-            return value
+            return "专科" if value in {"大专", "专科"} else value
     lowered = cleaned.lower()
     if "master" in lowered or "msc" in lowered:
         return "硕士"

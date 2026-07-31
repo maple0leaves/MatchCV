@@ -925,6 +925,32 @@ def test_extract_education_ignores_application_target(resume_text, expected):
     assert agent_mod._extract_education(resume_text) == expected
 
 
+def test_matching_treats_postgraduate_exam_score_as_undergraduate_education():
+    resume_text = """
+    教育背景
+    沈阳航空航天大学 网络工程 本科 2022.09-2026.06
+    英语能力：大学英语四级 557 分，研究生初试英语 75 分
+    学历：本科 | 专业：网络工程
+    Python PyTorch
+    """
+    admission_criteria = AdmissionCriteria(
+        title="多模态大模型方向硕士",
+        skills=["Python", "PyTorch"],
+        education_requirement="本科",
+    )
+
+    student = agent_mod._local_student_profile(
+        {"name": "周子轩", "source": "zhou-zixuan.pdf"},
+        resume_text,
+        admission_criteria,
+    )
+    match_result = _local_match_score(student, admission_criteria, resume_text)
+
+    assert student.education == "本科"
+    assert match_result.education == "本科"
+    assert match_result.score_breakdown.education_points == 40
+
+
 def test_master_admission_normalization_separates_target_degree_and_rule_skills():
     """硕士是申请目标；当前学历默认为本科，定性条件不能混入技能规则。"""
     parsed = AdmissionCriteria(
