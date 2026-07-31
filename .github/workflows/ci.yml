@@ -39,7 +39,7 @@ jobs:
       EMBEDDING_BACKEND: hash
       JWT_SECRET: ci-test-jwt-secret-at-least-32-bytes
       INTERNAL_SERVICE_TOKEN: ci-test-internal-token-at-least-32-bytes
-      CHECKPOINT_DB_PATH: ${{ runner.temp }}/matchcv/checkpoints.db
+      CHECKPOINT_DB_PATH: /tmp/matchcv/checkpoints.db
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v5
