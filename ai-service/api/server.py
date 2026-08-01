@@ -271,13 +271,44 @@ def _local_parse_resume_text(resume_text: str) -> StudentProfile:
             education = value
             break
 
-    summary = " ".join(lines[:8])
+    summary_parts = []
+    if education:
+        summary_parts.append(f"最高学历为{education}")
+    if skills:
+        summary_parts.append(f"核心技能包括{'、'.join(skills[:6])}")
+
+    representative_detail = ""
+    for line in lines:
+        match = re.match(
+            r"^(?:项目描述|技术成果|科研经历|研究经历|实习经历|主要工作)[:：]\s*(.+)$",
+            line,
+        )
+        if match and len(match.group(1).strip()) >= 12:
+            representative_detail = match.group(1).strip()
+            complete_sentence = re.match(
+                r"^(.{12,160}?[。！？!?])",
+                representative_detail,
+            )
+            if complete_sentence:
+                representative_detail = complete_sentence.group(1)
+            break
+    if representative_detail:
+        if len(representative_detail) > 100:
+            representative_detail = representative_detail[:99].rstrip(" ，,；;：:") + "…"
+        representative_detail = representative_detail.rstrip("。！？!?；;")
+        summary_parts.append(f"代表经历为{representative_detail}")
+
+    summary = "；".join(summary_parts)
+    if summary:
+        summary += "。"
+    else:
+        summary = "；".join(lines[:3])
     return StudentProfile(
         name=name,
         email=email_match.group(0) if email_match else "",
         skills=skills,
         education=education,
-        summary=summary[:800],
+        summary=summary,
     )
 
 

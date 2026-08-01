@@ -7,6 +7,50 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 from langgraph.graph.message import add_messages
 
 
+_CJK_SUMMARY_MAX_CHARS = 220
+_LATIN_SUMMARY_MAX_CHARS = 420
+_SUMMARY_MAX_SENTENCES = 3
+
+
+def _coerce_text_value(value) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, list):
+        return "；".join(str(item) for item in value if item is not None)
+    if isinstance(value, dict):
+        return "；".join(str(item) for item in value.values() if item is not None)
+    return str(value)
+
+
+def compact_resume_summary(value) -> str:
+    """Normalize and bound a resume summary without cutting a useful sentence early."""
+    text = re.sub(r"\s+", " ", _coerce_text_value(value)).strip()
+    if not text:
+        return ""
+
+    sentences = [
+        item.strip()
+        for item in re.split(r"(?<=[。！？])|(?<=[.!?])\s+", text)
+        if item.strip()
+    ]
+    if len(sentences) > _SUMMARY_MAX_SENTENCES:
+        text = "".join(sentences[:_SUMMARY_MAX_SENTENCES])
+
+    max_chars = (
+        _CJK_SUMMARY_MAX_CHARS
+        if re.search(r"[\u4e00-\u9fff]", text)
+        else _LATIN_SUMMARY_MAX_CHARS
+    )
+    if len(text) <= max_chars:
+        return text
+
+    candidate = text[:max_chars]
+    boundary = max(candidate.rfind(mark) for mark in "。！？.!?；;")
+    if boundary >= max_chars // 2:
+        return candidate[: boundary + 1].rstrip()
+    return candidate[: max_chars - 1].rstrip(" ，,；;：:") + "…"
+
+
 
 
 class StudentProfile(BaseModel):
@@ -16,7 +60,7 @@ class StudentProfile(BaseModel):
     email: str = Field(default="", description="联系邮箱")
     skills: list[str] = Field(default_factory=list, description="技能列表")
     education: str = Field(default="", description="最高学历")
-    summary: str = Field(default="", description="简历摘要")
+    summary: str = Field(default="", description="2-3 句话的简洁简历摘要")
     source: str = Field(default="", description="简历来源文件路径（用于去重，唯一标识一份简历）")
 
     @field_validator("skills", mode="before")
@@ -28,16 +72,15 @@ class StudentProfile(BaseModel):
             return [item.strip() for item in re.split(r"[,，、;；\n]", value) if item.strip()]
         return value
 
-    @field_validator("education", "summary", mode="before")
+    @field_validator("education", mode="before")
     @classmethod
     def _coerce_text(cls, value):
-        if value is None:
-            return ""
-        if isinstance(value, list):
-            return "；".join(str(item) for item in value if item is not None)
-        if isinstance(value, dict):
-            return "；".join(str(item) for item in value.values() if item is not None)
-        return str(value)
+        return _coerce_text_value(value)
+
+    @field_validator("summary", mode="before")
+    @classmethod
+    def _compact_summary(cls, value):
+        return compact_resume_summary(value)
 
 class ScoreBreakdown(BaseModel):
     """Stable scoring facts captured when the student is evaluated."""
