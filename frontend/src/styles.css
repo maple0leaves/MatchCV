@@ -116,6 +116,7 @@ button:disabled {
   position: relative;
   z-index: 1;
   min-height: 100vh;
+  overflow-x: clip;
 }
 
 .ambient-noise {
@@ -2610,5 +2611,135 @@ button:disabled {
 
   .pdf-preview-modal {
     border-radius: 0;
+  }
+}
+
+@media (max-width: 640px) {
+  .topbar {
+    padding: 0.7rem 0;
+  }
+
+  .topbar-inner {
+    width: calc(100% - 1.25rem);
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.7rem;
+  }
+
+  .brand {
+    align-self: flex-start;
+  }
+
+  .brand-name {
+    font-size: 1.12rem;
+  }
+
+  .topbar-status {
+    display: grid;
+    width: 100%;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .topbar-status > * {
+    min-width: 0;
+  }
+
+  .status-pill {
+    display: none;
+  }
+
+  .pool-btn,
+  .auth-entry,
+  .user-chip {
+    width: 100%;
+    min-width: 0;
+    height: 44px;
+    justify-content: center;
+    padding: 0 10px;
+  }
+
+  .user-chip span {
+    min-width: 0;
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .logout-btn {
+    flex: 0 0 28px;
+  }
+
+  .main-stage {
+    width: calc(100% - 1.25rem);
+  }
+
+  .slogan-main {
+    font-size: clamp(2.15rem, 12.5vw, 3rem);
+  }
+
+  .slogan-sub {
+    letter-spacing: 0.18em;
+  }
+
+  .compose-panel {
+    padding: 0.95rem;
+  }
+
+  .auth-modal {
+    width: calc(100vw - 1.25rem);
+    padding: 18px;
+  }
+
+  .auth-input input {
+    font-size: 1rem;
+  }
+
+  .auth-captcha-row {
+    grid-template-columns: 1fr;
+  }
+
+  .auth-captcha-image {
+    width: 100%;
+  }
+
+  .toast {
+    width: calc(100% - 1.25rem);
+    bottom: 16px;
+    text-align: center;
+  }
+
+  .drawer-header {
+    padding: 14px 16px;
+  }
+
+  .drawer-body {
+    padding: 0 16px 24px;
+  }
+
+  .drawer-footer,
+  .drawer-footer.three-actions {
+    grid-template-columns: 1fr;
+    padding: 12px 16px;
+  }
+
+  .student-profile {
+    grid-template-columns: 1fr;
+  }
+
+  .student-profile > div > span {
+    align-items: flex-start;
+    overflow-wrap: anywhere;
+  }
+
+  .drawer-score {
+    align-items: flex-start;
+  }
+
+  .evidence-row > div > div {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
   }
 }
