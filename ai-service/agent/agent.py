@@ -8,6 +8,8 @@ import os
 import re
 import sys
 import time
+from typing import Literal
+from urllib.parse import urlparse
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
@@ -15,7 +17,6 @@ from langchain.chat_models import init_chat_model
 from langchain_core.messages import HumanMessage, RemoveMessage, ToolMessage
 from langchain_openai import ChatOpenAI
 from langgraph.graph.message import REMOVE_ALL_MESSAGES
-from typing import Literal
 
 from config import (
     LLM_DISABLE_THINKING,
@@ -39,7 +40,6 @@ from config import (
 
 
 
-_THINKING_EXTRA_BODY = {"enable_thinking": False} if LLM_DISABLE_THINKING else None
 from agent.observability import log_tool_usage, trace_agent_step
 from agent.security import INJECTION_GUARD_SYSTEM, log_if_injection, wrap_untrusted
 from agent.schemas import (
@@ -80,6 +80,16 @@ class AgentWorkflowIncompleteError(RuntimeError):
     """Raised when the Agent still ends after exhausting bounded workflow repairs."""
 
 
+def _thinking_extra_body(base_url: str) -> dict[str, object] | None:
+    """Return the provider-specific request body for disabling thinking."""
+    if not LLM_DISABLE_THINKING:
+        return None
+    host = (urlparse(base_url).hostname or "").lower()
+    if host == "api.deepseek.com":
+        return {"thinking": {"type": "disabled"}}
+    return {"enable_thinking": False}
+
+
 def _build_llm(temperature: float = LLM_TEMPERATURE):
     """Build LLM instance with an optional OpenAI-compatible fallback."""
     fallback = _build_fallback_llm(temperature)
@@ -99,7 +109,7 @@ def _build_primary_llm(temperature: float = LLM_TEMPERATURE):
             base_url=OPENAI_BASE_URL,
             timeout=LLM_TIMEOUT,
             default_headers={"HTTP-Referer": "https://github.com/admission-agent"},
-            extra_body=_THINKING_EXTRA_BODY,
+            extra_body=_thinking_extra_body(OPENAI_BASE_URL),
         )
     return init_chat_model(f"openai:{LLM_MODEL}", temperature=temperature)
 
@@ -115,7 +125,7 @@ def _build_fallback_llm(temperature: float = LLM_TEMPERATURE):
         base_url=LLM_FALLBACK_BASE_URL,
         timeout=LLM_TIMEOUT,
         default_headers={"HTTP-Referer": "https://github.com/admission-agent"},
-        extra_body=_THINKING_EXTRA_BODY,
+        extra_body=_thinking_extra_body(LLM_FALLBACK_BASE_URL),
     )
 
 

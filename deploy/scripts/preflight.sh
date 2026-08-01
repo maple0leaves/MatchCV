@@ -63,6 +63,18 @@ require_secret REDIS_PASSWORD 16
 require_secret PGVECTOR_PASSWORD 16 "matchcv"
 require_secret ADMIN_PASSWORD 12 "admin123"
 require_secret OPENAI_API_KEY 8
+require_secret LLM_FALLBACK_API_KEY 8
+require_secret EMBEDDING_API_KEY 8
+
+for required_setting in \
+  OPENAI_BASE_URL \
+  LLM_MODEL \
+  LLM_FALLBACK_BASE_URL \
+  LLM_FALLBACK_MODEL \
+  EMBEDDING_BASE_URL \
+  EMBEDDING_MODEL; do
+  [[ -n "$(value_of "$required_setting")" ]] || fail "$required_setting is missing"
+done
 
 matchcv_data_dir="$(value_of MATCHCV_DATA_DIR)"
 [[ "$matchcv_data_dir" == /* ]] || fail "MATCHCV_DATA_DIR must be an absolute server path"

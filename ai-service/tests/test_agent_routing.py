@@ -40,6 +40,28 @@ def test_route_from_agent_to_tools_when_tool_calls_present():
     assert route_from_agent(state) == "tools"
 
 
+def test_thinking_body_uses_deepseek_official_shape(monkeypatch):
+    monkeypatch.setattr(agent_mod, "LLM_DISABLE_THINKING", True)
+
+    assert agent_mod._thinking_extra_body("https://api.deepseek.com") == {
+        "thinking": {"type": "disabled"}
+    }
+
+
+def test_thinking_body_uses_siliconflow_shape(monkeypatch):
+    monkeypatch.setattr(agent_mod, "LLM_DISABLE_THINKING", True)
+
+    assert agent_mod._thinking_extra_body("https://api.siliconflow.cn/v1") == {
+        "enable_thinking": False
+    }
+
+
+def test_thinking_body_is_omitted_when_thinking_is_enabled(monkeypatch):
+    monkeypatch.setattr(agent_mod, "LLM_DISABLE_THINKING", False)
+
+    assert agent_mod._thinking_extra_body("https://api.deepseek.com") is None
+
+
 def _tool_call_message(name: str, call_id: str) -> AIMessage:
     return AIMessage(
         content="",

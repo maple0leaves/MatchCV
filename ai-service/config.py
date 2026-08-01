@@ -20,8 +20,8 @@ def _resolve_path(path_value: str) -> str:
 
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
-OPENAI_BASE_URL = os.getenv("OPENAI_BASE_URL", "")
-LLM_MODEL = os.getenv("LLM_MODEL", "gpt-4o-mini")
+OPENAI_BASE_URL = os.getenv("OPENAI_BASE_URL", "https://api.deepseek.com")
+LLM_MODEL = os.getenv("LLM_MODEL", "deepseek-v4-flash")
 LLM_TEMPERATURE = float(os.getenv("LLM_TEMPERATURE", "0.0"))
 LLM_TIMEOUT = float(os.getenv("LLM_TIMEOUT", "8"))
 
@@ -31,15 +31,15 @@ LLM_TIMEOUT = float(os.getenv("LLM_TIMEOUT", "8"))
 EMBEDDING_TIMEOUT = float(os.getenv("EMBEDDING_TIMEOUT", "20"))
 
 
-LLM_STRUCTURED_METHOD = os.getenv("LLM_STRUCTURED_METHOD", "function_calling")
+LLM_STRUCTURED_METHOD = os.getenv("LLM_STRUCTURED_METHOD", "json_mode")
 
 
 
-LLM_DISABLE_THINKING = os.getenv("LLM_DISABLE_THINKING", "false").lower() == "true"
+LLM_DISABLE_THINKING = os.getenv("LLM_DISABLE_THINKING", "true").lower() == "true"
 LLM_FORCE_FALLBACK = os.getenv("LLM_FORCE_FALLBACK", "false").lower() == "true"
 LLM_FALLBACK_API_KEY = os.getenv("LLM_FALLBACK_API_KEY", "")
-LLM_FALLBACK_BASE_URL = os.getenv("LLM_FALLBACK_BASE_URL", "")
-LLM_FALLBACK_MODEL = os.getenv("LLM_FALLBACK_MODEL", "")
+LLM_FALLBACK_BASE_URL = os.getenv("LLM_FALLBACK_BASE_URL", "https://api.siliconflow.cn/v1")
+LLM_FALLBACK_MODEL = os.getenv("LLM_FALLBACK_MODEL", "deepseek-ai/DeepSeek-V4-Flash")
 LLM_FALLBACK_STRUCTURED_METHOD = os.getenv("LLM_FALLBACK_STRUCTURED_METHOD", "json_mode")
 
 
@@ -106,7 +106,7 @@ PGVECTOR_PASSWORD = os.getenv("PGVECTOR_PASSWORD", "matchcv")
 PGVECTOR_TABLE = os.getenv("PGVECTOR_TABLE", "resume_vectors")
 
 
-EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "text-embedding-3-small")
+EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "BAAI/bge-m3")
 EMBEDDING_BACKEND = os.getenv("EMBEDDING_BACKEND", "openai")
 RAG_TOP_K = int(os.getenv("RAG_TOP_K", "5"))
 
